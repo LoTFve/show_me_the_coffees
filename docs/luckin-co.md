@@ -4,7 +4,7 @@
 
 状态：候选，未经独立建模比对。第 5 节列出的缺口未解决前，相关契约不能当作已确认。
 
-关系图见 [luckin-co-diagram.md](luckin-co-diagram.md)。
+关系图见 [luckin-co-diagram.md](luckin-co-diagram.md)（GitHub 上直接看）；可交互的版本是 [luckin-co.html](luckin-co.html)，下载后用浏览器打开，点概念能看到它的全部 op。HTML 由 `npm run co-diagram` 从本文件生成，改了 op 后重新运行即可。
 
 ## 1. 需求拆解
 
