@@ -39,6 +39,8 @@
 用户打开链接时，PR 描述必须已经填好上面四项，不需要再复制粘贴任何内容。
 
 - **能用 `gh` 时**：直接 `gh pr create` 建好 PR，给 PR 本身的链接。描述写在 `--body-file` 里，不要用 `--body` 传长文本，那样换行和引号容易出错。
+  - 改已有 PR 的描述时，`gh pr edit` 可能因为 GitHub 停用旧版 Projects 而报错（`Projects (classic) is being deprecated`），改不成功。这时改用 REST API：`gh api -X PATCH repos/LoTFve/show_me_the_coffees/pulls/<编号> -f title=... -F body=@<文件>`。
+  - 改完用 `gh api repos/LoTFve/show_me_the_coffees/pulls/<编号> --jq .body` 读回来，确认四项都在，再把链接给用户。
 - **不能用 `gh` 时**：
   1. 把分支整理成相对目标分支只有一个提交。提交信息第一行写 PR 标题，正文写完整描述。
   2. 给链接前运行 `git rev-list --count origin/<目标分支>..<分支>`，确认结果是 1。
