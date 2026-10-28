@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "lucky-agent": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/index.js"],
+      "env": {
+        "LUCKIN_MCP_TOKEN": "${LUCKIN_MCP_TOKEN}"
+      }
+    }
+  }
+}
