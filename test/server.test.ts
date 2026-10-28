@@ -176,6 +176,7 @@ describe("lucky-agent", () => {
     expect(r.isError).toBe(true);
     expect(text(r)).toContain("成功 3 单，第 4 单未完成，剩余 1 单未执行");
     expect(text(r)).toContain("超过上限");
+    expect(text(r)).toContain("领券");
     expect(up.creates_()).toHaveLength(3);
   });
 

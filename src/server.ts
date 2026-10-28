@@ -10,6 +10,8 @@ const fail = (text: string) => ({ content: [{ type: "text" as const, text }], is
 const json = (v: unknown) => ok(JSON.stringify(v, null, 2));
 const MAX_BATCH = 20;
 const RATE_LIMIT_RETRIES = 3;
+// 官方接口不能领券，只能提醒用户自己去领
+const CLAIM_HINT = "请提醒用户去瑞幸 App 或微信小程序领券（首页活动或“我的 → 优惠券”），领完后重新预览，剩下的几杯接着下。";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** 瑞幸限流：{"code":1000,"msg":"您手速太快啦，稍后重试吧~"} */
 const isRateLimited = (text: string) => /手速太快|稍后重试|频繁/.test(text);
@@ -235,7 +237,10 @@ export function createServer(deps: {
         const price = Number(preview.discountPrice);
         const coupons = preview.couponCodeList ?? [];
         if (!Number.isFinite(price)) return stop("预览没有返回价格，未下单");
-        if (price > max_pay_each) return stop(`实付 ¥${price} 超过上限 ¥${max_pay_each}，可能券已用完，未下单`);
+        if (price > max_pay_each) {
+          const hint = coupons.length ? "可能能用的券已经用完" : `券已用完。${CLAIM_HINT}`;
+          return stop(`实付 ¥${price} 超过上限 ¥${max_pay_each}，${hint}，未下单`);
+        }
         const dup = coupons.find((c) => usedCoupons.has(c));
         if (dup) return stop(`券 ${dup} 已用在前面某单（可能要先付款才会占用），未下单`);
 

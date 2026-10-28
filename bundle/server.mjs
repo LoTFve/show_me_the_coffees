@@ -39234,6 +39234,7 @@ var fail = (text) => ({ content: [{ type: "text", text }], isError: true });
 var json2 = (v) => ok(JSON.stringify(v, null, 2));
 var MAX_BATCH = 20;
 var RATE_LIMIT_RETRIES = 3;
+var CLAIM_HINT = "\u8BF7\u63D0\u9192\u7528\u6237\u53BB\u745E\u5E78 App \u6216\u5FAE\u4FE1\u5C0F\u7A0B\u5E8F\u9886\u5238\uFF08\u9996\u9875\u6D3B\u52A8\u6216\u201C\u6211\u7684 \u2192 \u4F18\u60E0\u5238\u201D\uFF09\uFF0C\u9886\u5B8C\u540E\u91CD\u65B0\u9884\u89C8\uFF0C\u5269\u4E0B\u7684\u51E0\u676F\u63A5\u7740\u4E0B\u3002";
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 var isRateLimited = (text) => /手速太快|稍后重试|频繁/.test(text);
 function payInfo(text) {
@@ -39420,7 +39421,10 @@ function createServer(deps) {
         const price = Number(preview.discountPrice);
         const coupons = preview.couponCodeList ?? [];
         if (!Number.isFinite(price)) return stop("\u9884\u89C8\u6CA1\u6709\u8FD4\u56DE\u4EF7\u683C\uFF0C\u672A\u4E0B\u5355");
-        if (price > max_pay_each) return stop(`\u5B9E\u4ED8 \xA5${price} \u8D85\u8FC7\u4E0A\u9650 \xA5${max_pay_each}\uFF0C\u53EF\u80FD\u5238\u5DF2\u7528\u5B8C\uFF0C\u672A\u4E0B\u5355`);
+        if (price > max_pay_each) {
+          const hint = coupons.length ? "\u53EF\u80FD\u80FD\u7528\u7684\u5238\u5DF2\u7ECF\u7528\u5B8C" : `\u5238\u5DF2\u7528\u5B8C\u3002${CLAIM_HINT}`;
+          return stop(`\u5B9E\u4ED8 \xA5${price} \u8D85\u8FC7\u4E0A\u9650 \xA5${max_pay_each}\uFF0C${hint}\uFF0C\u672A\u4E0B\u5355`);
+        }
         const dup = coupons.find((c) => usedCoupons.has(c));
         if (dup) return stop(`\u5238 ${dup} \u5DF2\u7528\u5728\u524D\u9762\u67D0\u5355\uFF08\u53EF\u80FD\u8981\u5148\u4ED8\u6B3E\u624D\u4F1A\u5360\u7528\uFF09\uFF0C\u672A\u4E0B\u5355`);
         const args = { deptId, longitude, latitude, productList: o.productList, couponCodeList: coupons };
