@@ -8,9 +8,20 @@ agents for ordering coffees for you with coupons all you had!
 
 需要 Claude Code 2.1.275 及以上，以及 Node.js 20 及以上。
 
-```sh
+在 Claude Code 对话框里输入（不是终端）：
+
+```
 /plugin install lucky-agent --marketplace LoTFve/show_me_the_coffees
 ```
+
+或者在终端（PowerShell / bash）里运行：
+
+```sh
+claude plugin marketplace add LoTFve/show_me_the_coffees
+claude plugin install lucky-agent@show-me-the-coffees
+```
+
+装完重启 Claude Code。
 
 装好后直接说"点 10 杯生椰拿铁"。第一次用时会让你登录：
 
