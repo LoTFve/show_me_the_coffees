@@ -39233,6 +39233,22 @@ var ok = (text) => ({ content: [{ type: "text", text }] });
 var fail = (text) => ({ content: [{ type: "text", text }], isError: true });
 var json2 = (v) => ok(JSON.stringify(v, null, 2));
 var MAX_BATCH = 20;
+var RATE_LIMIT_RETRIES = 3;
+var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+var isRateLimited = (text) => /手速太快|稍后重试|频繁/.test(text);
+function payInfo(text) {
+  try {
+    const d = JSON.parse(text).data ?? {};
+    const lines = [`\u8BA2\u5355\u53F7 ${d.orderIdStr ?? d.orderId}`];
+    if (d.needPay) {
+      if (d.payOrderQrCodeUrl) lines.push(`\u4ED8\u6B3E\u4E8C\u7EF4\u7801 ${d.payOrderQrCodeUrl}`);
+      if (d.payOrderUrl) lines.push(`\u624B\u673A\u5FAE\u4FE1\u6253\u5F00 ${d.payOrderUrl}`);
+    }
+    return lines.join("\n");
+  } catch {
+    return text;
+  }
+}
 function summary(report, total, stoppedAt, paid) {
   const sum = `\u5408\u8BA1\u5B9E\u4ED8 \xA5${paid.toFixed(2)}\uFF0C\u8BA2\u5355\u9700\u6309\u5B98\u65B9\u8FD4\u56DE\u7684\u65B9\u5F0F\u4ED8\u6B3E\u3002`;
   const head = stoppedAt === total ? `\u5168\u90E8 ${total} \u5355\u5DF2\u4E0B\u5355\uFF0C${sum}` : `\u5DF2\u505C\u6B62\uFF1A\u6210\u529F ${stoppedAt} \u5355\uFF0C\u7B2C ${stoppedAt + 1} \u5355\u672A\u5B8C\u6210\uFF0C\u5269\u4F59 ${total - stoppedAt - 1} \u5355\u672A\u6267\u884C\u3002${sum}`;
@@ -39247,6 +39263,8 @@ var INSTRUCTIONS = `\u745E\u5E78\u70B9\u5355\u52A9\u624B\u3002\u6D41\u7A0B\uFF1A
 function createServer(deps) {
   const { config: config3, store, connect } = deps;
   const gate = deps.gate ?? new ConfirmGate(config3.confirmTtlMs);
+  const orderGapMs = deps.orderGapMs ?? 3e3;
+  const rateLimitWaitMs = deps.rateLimitWaitMs ?? 5e3;
   const server2 = new McpServer({ name: "lucky-agent", version: "0.1.0" }, { instructions: INSTRUCTIONS });
   let upstream;
   const resolve = async () => {
@@ -39386,6 +39404,7 @@ function createServer(deps) {
       let paid = 0;
       for (const [i, o] of orders.entries()) {
         const name = `\u7B2C ${i + 1} \u5355${o.label ? `\uFF08${o.label}\uFF09` : ""}`;
+        if (i > 0) await sleep(orderGapMs);
         const stop = (msg) => {
           report.push(`${name}\uFF1A${msg}`);
           return fail(summary(report, orders.length, i, paid));
@@ -39409,6 +39428,10 @@ function createServer(deps) {
         let r;
         try {
           r = await upstream.callTool("createOrder", args);
+          for (let retry = 0; r.isError && isRateLimited(r.text) && retry < RATE_LIMIT_RETRIES; retry++) {
+            await sleep(rateLimitWaitMs * (retry + 1));
+            r = await upstream.callTool("createOrder", args);
+          }
         } catch (e) {
           return stop(`\u7ED3\u679C\u672A\u77E5\uFF0C${e.message}\u3002\u53EF\u80FD\u5DF2\u4E0B\u5355\uFF0C\u8BF7\u5148\u6838\u5B9E\u518D\u51B3\u5B9A\u662F\u5426\u8865\u4E0B`);
         }
@@ -39419,7 +39442,7 @@ function createServer(deps) {
         coupons.forEach((c) => usedCoupons.add(c));
         paid += price;
         report.push(`${name}\uFF1A\u6210\u529F\uFF0C\u5B9E\u4ED8 \xA5${price}${coupons.length ? `\uFF0C\u5238 ${coupons.join("\u3001")}` : "\uFF0C\u672A\u7528\u5238"}
-${r.text}`);
+${payInfo(r.text)}`);
       }
       return ok(summary(report, orders.length, orders.length, paid));
     }

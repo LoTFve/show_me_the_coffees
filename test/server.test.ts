@@ -17,6 +17,8 @@ class FakeUpstream implements Upstream {
   /** 第 n 次 createOrder（从 1 起）返回业务错误 / 抛网络异常 */
   errorOn?: number;
   throwOn?: number;
+  /** 第 n 次 createOrder 返回限流（只限流一次） */
+  rateLimitOn?: number;
   /** 下单后不消耗券（模拟未付款不占券） */
   sticky = false;
   private creates = 0;
@@ -35,11 +37,13 @@ class FakeUpstream implements Upstream {
     }
     if (name === "createOrder") {
       this.creates++;
+      if (this.creates === this.rateLimitOn) return { text: '{"code":1000,"msg":"您手速太快啦，稍后重试吧~","success":false}', isError: true };
       if (this.creates === this.throwOn) throw new Error("timeout");
       if (this.creates === this.errorOn) return { text: '{"code":1000,"msg":"券已失效","success":false}', isError: true };
       const used = (args.couponCodeList as string[] | undefined)?.[0];
       if (used && !this.sticky) this.coupons = this.coupons.filter((c) => c !== used);
-      return { text: `ok:${this.creates}`, isError: false };
+      const data = { orderIdStr: `7701${this.creates}`, needPay: true, payOrderQrCodeUrl: "https://pay/qr", payOrderUrl: "weixin://pay" };
+      return { text: JSON.stringify({ code: 0, success: true, data }), isError: false };
     }
     return { text: `ok:${name}`, isError: false };
   }
@@ -66,6 +70,8 @@ describe("lucky-agent", () => {
       store: new LocalStore(dir),
       connect: () => up,
       gate: new ConfirmGate(1000, () => clock),
+      orderGapMs: 0,
+      rateLimitWaitMs: 0,
     });
     const [a, b] = InMemoryTransport.createLinkedPair();
     await server.connect(a);
@@ -112,7 +118,7 @@ describe("lucky-agent", () => {
     expect(up.calls).toHaveLength(0);
 
     const done = await client.callTool({ name: "luckin_call", arguments: { ...args, confirm_code: code } });
-    expect(text(done)).toBe("ok:1");
+    expect(JSON.parse(text(done)).data.orderIdStr).toBe("77011");
     expect(up.calls).toHaveLength(1);
 
     // 一次性
@@ -195,6 +201,18 @@ describe("lucky-agent", () => {
     expect(r.isError).toBe(true);
     expect(text(r)).toContain("成功 2 单，第 3 单未完成，剩余 2 单未执行");
     expect(up.creates_()).toHaveLength(3);
+  });
+
+  it("batch: retries when rate limited and returns pay links", async () => {
+    up.coupons = Array.from({ length: 5 }, (_, i) => `SY${i}`);
+    up.rateLimitOn = 2;
+    const r = await run(batch(5));
+    expect(r.isError).toBeFalsy();
+    expect(text(r)).toContain("全部 5 单已下单");
+    // 第 2 单限流一次后重试成功：共 6 次 createOrder
+    expect(up.creates_()).toHaveLength(6);
+    expect(text(r)).toContain("订单号 7701");
+    expect(text(r)).toContain("付款二维码 https://pay/qr");
   });
 
   it("batch: network error is reported as unknown, not retried", async () => {

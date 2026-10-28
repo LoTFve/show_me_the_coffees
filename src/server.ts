@@ -9,6 +9,25 @@ const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
 const fail = (text: string) => ({ content: [{ type: "text" as const, text }], isError: true });
 const json = (v: unknown) => ok(JSON.stringify(v, null, 2));
 const MAX_BATCH = 20;
+const RATE_LIMIT_RETRIES = 3;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** 瑞幸限流：{"code":1000,"msg":"您手速太快啦，稍后重试吧~"} */
+const isRateLimited = (text: string) => /手速太快|稍后重试|频繁/.test(text);
+
+/** 从 createOrder 返回里取出订单号和付款链接 */
+function payInfo(text: string): string {
+  try {
+    const d = JSON.parse(text).data ?? {};
+    const lines = [`订单号 ${d.orderIdStr ?? d.orderId}`];
+    if (d.needPay) {
+      if (d.payOrderQrCodeUrl) lines.push(`付款二维码 ${d.payOrderQrCodeUrl}`);
+      if (d.payOrderUrl) lines.push(`手机微信打开 ${d.payOrderUrl}`);
+    }
+    return lines.join("\n");
+  } catch {
+    return text;
+  }
+}
 
 /** stoppedAt：出问题那一单的下标；全部成功时等于 total */
 function summary(report: string[], total: number, stoppedAt: number, paid: number): string {
@@ -33,9 +52,15 @@ export function createServer(deps: {
   /** 用 token 建立上游连接 */
   connect: (token: string) => Upstream;
   gate?: ConfirmGate;
+  /** 拆单时相邻两单的间隔，避免瑞幸“手速太快”限流 */
+  orderGapMs?: number;
+  /** 被限流后第 n 次重试前等待 n × rateLimitWaitMs */
+  rateLimitWaitMs?: number;
 }) {
   const { config, store, connect } = deps;
   const gate = deps.gate ?? new ConfirmGate(config.confirmTtlMs);
+  const orderGapMs = deps.orderGapMs ?? 3000;
+  const rateLimitWaitMs = deps.rateLimitWaitMs ?? 5000;
   const server = new McpServer({ name: "lucky-agent", version: "0.1.0" }, { instructions: INSTRUCTIONS });
 
   // token 来源：环境变量优先，其次是用户在对话里通过 luckin_login 保存的
@@ -193,6 +218,7 @@ export function createServer(deps: {
       let paid = 0;
       for (const [i, o] of orders.entries()) {
         const name = `第 ${i + 1} 单${o.label ? `（${o.label}）` : ""}`;
+        if (i > 0) await sleep(orderGapMs);
         const stop = (msg: string) => {
           report.push(`${name}：${msg}`);
           return fail(summary(report, orders.length, i, paid));
@@ -218,6 +244,11 @@ export function createServer(deps: {
         let r: { text: string; isError: boolean };
         try {
           r = await upstream!.callTool("createOrder", args);
+          // 限流时瑞幸明确没有建单，等一会儿重试是安全的
+          for (let retry = 0; r.isError && isRateLimited(r.text) && retry < RATE_LIMIT_RETRIES; retry++) {
+            await sleep(rateLimitWaitMs * (retry + 1));
+            r = await upstream!.callTool("createOrder", args);
+          }
         } catch (e) {
           // 网络异常时上游可能已经下单成功，不能盲目重试
           return stop(`结果未知，${(e as Error).message}。可能已下单，请先核实再决定是否补下`);
@@ -228,7 +259,7 @@ export function createServer(deps: {
         if (r.isError) return stop(`下单失败，${r.text}`);
         coupons.forEach((c) => usedCoupons.add(c));
         paid += price;
-        report.push(`${name}：成功，实付 ¥${price}${coupons.length ? `，券 ${coupons.join("、")}` : "，未用券"}\n${r.text}`);
+        report.push(`${name}：成功，实付 ¥${price}${coupons.length ? `，券 ${coupons.join("、")}` : "，未用券"}\n${payInfo(r.text)}`);
       }
       return ok(summary(report, orders.length, orders.length, paid));
     },
