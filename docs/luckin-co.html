@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>瑞幸点单 CO 关系图</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fafafa; --fg:#111827; --muted:#6b7280; --line:#9ca3af; --card:#fff; --hl:#111827; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e5e7eb; --muted:#9ca3af; --line:#6b7280; --card:#1a1d24; --hl:#f9fafb; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.6 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:16px 24px 8px; }
+  h1 { margin:0 0 4px; font-size:20px; }
+  .sub { color:var(--muted); margin:0; }
+  .legend { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 24px; }
+  .chip { border-left:4px solid var(--c); padding:2px 10px; background:var(--card); border-radius:4px; }
+  .key { color:var(--muted); margin-left:8px; }
+  .key b { color:var(--fg); font-weight:600; }
+  main { display:grid; grid-template-columns: 1fr 340px; gap:16px; padding:8px 24px 24px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .canvas { background:var(--card); border-radius:12px; overflow:auto; }
+  svg { display:block; width:100%; height:auto; min-width:1000px; }
+  .node rect { fill:var(--card); stroke:var(--c); stroke-width:2.5; cursor:pointer; }
+  .node:focus { outline:none; }
+  .node:focus rect, .node.on rect { stroke-width:4; fill:color-mix(in srgb, var(--c) 14%, var(--card)); }
+  .nlabel { text-anchor:middle; font-weight:600; font-size:15px; fill:var(--fg); pointer-events:none; }
+  .edge path { fill:none; stroke:var(--line); stroke-width:1.6; }
+  .edge path.many { stroke-dasharray:6 4; }
+  .elabel { font-size:11.5px; fill:var(--muted); text-anchor:middle; paint-order:stroke; stroke:var(--card); stroke-width:4px; }
+  .dim .edge, .dim .node { opacity:.18; }
+  .dim .edge.on, .dim .node.on, .dim .node.near { opacity:1; }
+  .edge.on path { stroke:var(--hl); stroke-width:2.4; }
+  .edge.on .elabel { fill:var(--fg); font-weight:600; }
+  aside { background:var(--card); border-radius:12px; padding:16px; align-self:start; position:sticky; top:12px; }
+  aside h2 { margin:0 0 2px; font-size:17px; }
+  aside h3 { margin:14px 0 4px; font-size:13px; color:var(--muted); font-weight:600; }
+  aside ul { margin:0; padding-left:0; list-style:none; }
+  aside li { font:12.5px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; padding:3px 0; border-bottom:1px solid color-mix(in srgb, var(--line) 25%, transparent); word-break:break-all; }
+  .empty { color:var(--muted); }
+  footer { color:var(--muted); padding:0 24px 24px; font-size:12.5px; }
+  code { font-family: ui-monospace, Consolas, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <h1>瑞幸点单 CO 关系图</h1>
+  <p class="sub">由 <code>docs/luckin-co.md</code> 自动生成：10 个概念、20 条关系、51 个 op。状态：候选，见原文第 5 节缺口。</p>
+</header>
+<div class="legend"><span class="chip" style="--c:#2563eb">门店</span><span class="chip" style="--c:#059669">商品与规格</span><span class="chip" style="--c:#d97706">报价与券</span><span class="chip" style="--c:#dc2626">订单</span>
+  <span class="key"><b>实线</b> 单值　<b>虚线</b> 多值（集合）　点概念看全部 op，再点空白处取消</span>
+</div>
+<main>
+  <div class="canvas">
+    <svg id="g" viewBox="0 0 1730 820" role="img" aria-label="瑞幸点单概念关系图">
+      <defs>
+        <marker id="arrOne" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor" style="color:var(--line)"/></marker>
+        <marker id="arrMany" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="currentColor" style="color:var(--line)"/></marker>
+      </defs>
+      <g class="edge" data-from="Store" data-to="Product" data-i="0">
+    <path d="M 162.7 354.0 Q 300.0 245.0 437.3 136.0" class="many" marker-end="url(#arrMany)"/>
+    <text x="300.0" y="245.0" class="elabel">多 · store_product_search</text></g>
+      <g class="edge" data-from="Product" data-to="Attribute" data-i="1">
+    <path d="M 573.0 99.4 Q 665.0 90.0 757.0 80.6" class="many" marker-end="url(#arrMany)"/>
+    <text x="665.0" y="90.0" class="elabel">多 · product_attribute</text></g>
+      <g class="edge" data-from="Attribute" data-to="Option" data-i="2">
+    <path d="M 867.0 96.0 Q 895.0 200.0 867.0 304.0" class="many" marker-end="url(#arrMany)"/>
+    <text x="877.5" y="200.0" class="elabel">多 · attribute_option</text></g>
+      <g class="edge" data-from="Option" data-to="Attribute" data-i="3">
+    <path d="M 853.0 304.0 Q 825.0 200.0 853.0 96.0" class="one" marker-end="url(#arrOne)"/>
+    <text x="843.2" y="226.0" class="elabel">单 · option_attribute</text></g>
+      <g class="edge" data-from="Store" data-to="Option" data-i="4">
+    <path d="M 233.0 372.9 Q 495.0 355.0 757.0 337.1" class="many" marker-end="url(#arrMany)"/>
+    <text x="495.0" y="355.0" class="elabel">多 · store_product_attribute_option</text></g>
+      <g class="edge" data-from="Product" data-to="Option" data-i="5">
+    <path d="M 516.1 136.0 Q 665.0 220.0 813.9 304.0" class="one" marker-end="url(#arrOne)"/>
+    <text x="626.0" y="198.0" class="elabel">单 · product_attribute_defaultoption</text></g>
+      <g class="edge" data-from="Store" data-to="Sku" data-i="6">
+    <path d="M 163.0 406.0 Q 283.6 500.9 388.0 534.0" class="one" marker-end="url(#arrOne)"/>
+    <text x="291.8" y="485.5" class="elabel">单 · product_defaultsku</text></g>
+      <g class="edge" data-from="Sku" data-to="Product" data-i="7">
+    <path d="M 470.0 534.0 Q 470.0 335.0 470.0 136.0" class="one" marker-end="url(#arrOne)"/>
+    <text x="470.0" y="335.0" class="elabel">单 · sku_product</text></g>
+      <g class="edge" data-from="Sku" data-to="Option" data-i="8">
+    <path d="M 514.1 534.0 Q 665.0 445.0 815.9 356.0" class="many" marker-end="url(#arrMany)"/>
+    <text x="665.0" y="445.0" class="elabel">多 · sku_option</text></g>
+      <g class="edge" data-from="Store" data-to="Sku" data-i="9">
+    <path d="M 212.0 406.0 Q 316.4 439.1 437.0 534.0" class="one" marker-end="url(#arrOne)"/>
+    <text x="308.2" y="454.5" class="elabel">单 · sku_switch</text></g>
+      <g class="edge" data-from="Quote" data-to="Store" data-i="10">
+    <path d="M 1157.0 189.1 Q 695.0 275.0 233.0 360.9" class="one" marker-end="url(#arrOne)"/>
+    <text x="695.0" y="275.0" class="elabel">单 · quote_store</text></g>
+      <g class="edge" data-from="Quote" data-to="OrderLine" data-i="11">
+    <path d="M 1241.1 196.0 Q 1060.0 445.0 878.9 694.0" class="many" marker-end="url(#arrMany)"/>
+    <text x="1060.0" y="445.0" class="elabel">多 · quote_orderline</text></g>
+      <g class="edge" data-from="Quote" data-to="Coupon" data-i="12">
+    <path d="M 1302.1 196.0 Q 1430.0 275.0 1557.9 354.0" class="many" marker-end="url(#arrMany)"/>
+    <text x="1430.0" y="275.0" class="elabel">多 · quote_coupon</text></g>
+      <g class="edge" data-from="OrderLine" data-to="Sku" data-i="13">
+    <path d="M 796.6 694.0 Q 665.0 640.0 533.4 586.0" class="one" marker-end="url(#arrOne)"/>
+    <text x="665.0" y="640.0" class="elabel">单 · orderline_sku</text></g>
+      <g class="edge" data-from="OrderLine" data-to="Product" data-i="14">
+    <path d="M 843.4 694.0 Q 665.0 415.0 486.6 136.0" class="one" marker-end="url(#arrOne)"/>
+    <text x="665.0" y="415.0" class="elabel">单 · orderline_product</text></g>
+      <g class="edge" data-from="Order" data-to="Store" data-i="15">
+    <path d="M 1157.0 579.9 Q 695.0 490.0 233.0 400.1" class="one" marker-end="url(#arrOne)"/>
+    <text x="695.0" y="490.0" class="elabel">单 · order_store</text></g>
+      <g class="edge" data-from="Order" data-to="OrderLine" data-i="16">
+    <path d="M 1173.3 626.0 Q 1060.0 660.0 946.7 694.0" class="many" marker-end="url(#arrMany)"/>
+    <text x="1060.0" y="660.0" class="elabel">多 · order_orderline</text></g>
+      <g class="edge" data-from="Order" data-to="Coupon" data-i="17">
+    <path d="M 1321.0 574.0 Q 1449.0 519.4 1571.8 406.0" class="many" marker-end="url(#arrMany)"/>
+    <text x="1439.5" y="504.7" class="elabel">多 · order_coupon</text></g>
+      <g class="edge" data-from="Order" data-to="OrderStatus" data-i="18">
+    <path d="M 1315.3 626.0 Q 1430.0 680.0 1544.8 734.0" class="one" marker-end="url(#arrOne)"/>
+    <text x="1430.0" y="680.0" class="elabel">单 · order_status</text></g>
+      <g class="edge" data-from="Coupon" data-to="Order" data-i="19">
+    <path d="M 1539.0 406.0 Q 1411.0 460.6 1288.2 574.0" class="many" marker-end="url(#arrMany)"/>
+    <text x="1420.5" y="475.3" class="elabel">多 · coupon_order</text></g>
+      <g class="node" data-c="Store" tabindex="0" role="button" aria-label="Store，11 个属性">
+    <rect x="30" y="357" width="200" height="46" rx="10" style="--c:#2563eb"/>
+    <text x="130" y="385" class="nlabel">Store</text></g>
+      <g class="node" data-c="Product" tabindex="0" role="button" aria-label="Product，3 个属性">
+    <rect x="370" y="87" width="200" height="46" rx="10" style="--c:#059669"/>
+    <text x="470" y="115" class="nlabel">Product</text></g>
+      <g class="node" data-c="Attribute" tabindex="0" role="button" aria-label="Attribute，0 个属性">
+    <rect x="760" y="47" width="200" height="46" rx="10" style="--c:#059669"/>
+    <text x="860" y="75" class="nlabel">Attribute</text></g>
+      <g class="node" data-c="Option" tabindex="0" role="button" aria-label="Option，0 个属性">
+    <rect x="760" y="307" width="200" height="46" rx="10" style="--c:#059669"/>
+    <text x="860" y="335" class="nlabel">Option</text></g>
+      <g class="node" data-c="Sku" tabindex="0" role="button" aria-label="Sku，0 个属性">
+    <rect x="370" y="537" width="200" height="46" rx="10" style="--c:#059669"/>
+    <text x="470" y="565" class="nlabel">Sku</text></g>
+      <g class="node" data-c="OrderLine" tabindex="0" role="button" aria-label="OrderLine，1 个属性">
+    <rect x="760" y="697" width="200" height="46" rx="10" style="--c:#d97706"/>
+    <text x="860" y="725" class="nlabel">OrderLine</text></g>
+      <g class="node" data-c="Quote" tabindex="0" role="button" aria-label="Quote，4 个属性">
+    <rect x="1160" y="147" width="200" height="46" rx="10" style="--c:#d97706"/>
+    <text x="1260" y="175" class="nlabel">Quote</text></g>
+      <g class="node" data-c="Coupon" tabindex="0" role="button" aria-label="Coupon，1 个属性">
+    <rect x="1500" y="357" width="200" height="46" rx="10" style="--c:#d97706"/>
+    <text x="1600" y="385" class="nlabel">Coupon</text></g>
+      <g class="node" data-c="Order" tabindex="0" role="button" aria-label="Order，8 个属性">
+    <rect x="1160" y="577" width="200" height="46" rx="10" style="--c:#dc2626"/>
+    <text x="1260" y="605" class="nlabel">Order</text></g>
+      <g class="node" data-c="OrderStatus" tabindex="0" role="button" aria-label="OrderStatus，0 个属性">
+    <rect x="1500" y="737" width="200" height="46" rx="10" style="--c:#dc2626"/>
+    <text x="1600" y="765" class="nlabel">OrderStatus</text></g>
+    </svg>
+  </div>
+  <aside id="side" aria-live="polite">
+    <h2>点一个概念</h2>
+    <p class="empty">右侧会列出它的出边、入边和值属性，每条都是 <code>luckin-co.md</code> 里的原始 op 签名。</p>
+  </aside>
+</main>
+<footer>重新生成：<code>node scripts/co-diagram.mjs</code>。改了 CO 的 op 声明后运行一次即可同步，不要手工编辑本文件。</footer>
+<script>
+const D = {"Store":{"group":"门店","out":["store_product_search(Store , String) : set(Product)","store_product_attribute_option(Store , Product , Attribute) : set(Option)","product_defaultsku(Store , Product) : Sku","sku_switch(Store , Sku , Option) : Sku"],"in":["quote_store(Quote) : Store","order_store(Order) : Store"],"attrs":["store_name(Store) : String","store_address(Store) : String","store_coordinate(Store) : Coordinate","store_opentime(Store) : Time","store_closetime(Store) : Time","is_store_open(Store , DateTime) : Bool","is_store_delivery_supported(Store) : Bool","store_distance(Store , Coordinate) : Number","is_product_search_fallback(Store , String , Product) : Bool","store_product_initialprice(Store , Product) : Price","is_product_option_selectable(Store , Product , Option) : Bool"]},"Product":{"group":"商品与规格","out":["product_attribute(Product) : set(Attribute)","product_attribute_defaultoption(Product , Attribute) : Option"],"in":["store_product_search(Store , String) : set(Product)","sku_product(Sku) : Product","orderline_product(OrderLine) : Product"],"attrs":["product_name(Product) : String","is_product_new(Product) : Bool","product_option_extraprice(Product , Option) : Price"]},"Attribute":{"group":"商品与规格","out":["attribute_option(Attribute) : set(Option)"],"in":["product_attribute(Product) : set(Attribute)","option_attribute(Option) : Attribute"],"attrs":[]},"Option":{"group":"商品与规格","out":["option_attribute(Option) : Attribute"],"in":["attribute_option(Attribute) : set(Option)","store_product_attribute_option(Store , Product , Attribute) : set(Option)","product_attribute_defaultoption(Product , Attribute) : Option","sku_option(Sku) : set(Option)"],"attrs":[]},"Sku":{"group":"商品与规格","out":["sku_product(Sku) : Product","sku_option(Sku) : set(Option)"],"in":["product_defaultsku(Store , Product) : Sku","sku_switch(Store , Sku , Option) : Sku","orderline_sku(OrderLine) : Sku"],"attrs":[]},"OrderLine":{"group":"报价与券","out":["orderline_sku(OrderLine) : Sku","orderline_product(OrderLine) : Product"],"in":["quote_orderline(Quote) : set(OrderLine)","order_orderline(Order) : set(OrderLine)"],"attrs":["orderline_amount(OrderLine) : Number"]},"Quote":{"group":"报价与券","out":["quote_store(Quote) : Store","quote_orderline(Quote) : set(OrderLine)","quote_coupon(Quote) : set(Coupon)"],"in":[],"attrs":["quote_initialprice(Quote) : Price","quote_payprice(Quote) : Price","quote_discount(Quote) : Price","quote_time(Quote) : DateTime"]},"Coupon":{"group":"报价与券","out":["coupon_order(Coupon) : set(Order)"],"in":["quote_coupon(Quote) : set(Coupon)","order_coupon(Order) : set(Coupon)"],"attrs":["is_coupon_occupied(Coupon , DateTime) : Bool"]},"Order":{"group":"订单","out":["order_store(Order) : Store","order_orderline(Order) : set(OrderLine)","order_coupon(Order) : set(Coupon)","order_status(Order , DateTime) : OrderStatus"],"in":["coupon_order(Coupon) : set(Order)"],"attrs":["order_payprice(Order) : Price","order_createtime(Order) : DateTime","order_pickuptime(Order) : DateTime","order_pickupcode(Order) : String","order_payqrcodeurl(Order) : String","order_paydeeplink(Order) : String","is_order_payment_needed(Order) : Bool","is_order_allowed(Order) : Bool"]},"OrderStatus":{"group":"订单","out":[],"in":["order_status(Order , DateTime) : OrderStatus"],"attrs":[]}};
+const svg = document.getElementById("g"), side = document.getElementById("side");
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+const list = (t, xs) => "<h3>" + t + "（" + xs.length + "）</h3>" + (xs.length ? "<ul>" + xs.map((x) => "<li>" + esc(x) + "</li>").join("") + "</ul>" : '<p class="empty">无</p>');
+function pick(c) {
+  svg.classList.toggle("dim", !!c);
+  svg.querySelectorAll(".on,.near").forEach((n) => n.classList.remove("on", "near"));
+  if (!c) { side.innerHTML = '<h2>点一个概念</h2><p class="empty">右侧会列出它的出边、入边和值属性。</p>'; return; }
+  svg.querySelector('.node[data-c="' + c + '"]').classList.add("on");
+  svg.querySelectorAll(".edge").forEach((e) => {
+    if (e.dataset.from === c || e.dataset.to === c) {
+      e.classList.add("on");
+      svg.querySelector('.node[data-c="' + (e.dataset.from === c ? e.dataset.to : e.dataset.from) + '"]').classList.add("near");
+    }
+  });
+  const d = D[c];
+  side.innerHTML = "<h2>" + c + "</h2><p class='empty'>" + d.group + "</p>" + list("指向其他概念", d.out) + list("被其他概念指向", d.in) + list("值属性", d.attrs);
+}
+svg.addEventListener("click", (ev) => { const n = ev.target.closest(".node"); const c = n ? n.dataset.c : null; history.replaceState(null, "", c ? "#" + c : location.pathname); pick(c); });
+// 链接里带 #概念名 时直接选中，方便在文档里链接到某个概念
+if (D[location.hash.slice(1)]) pick(location.hash.slice(1));
+svg.addEventListener("keydown", (ev) => { const n = ev.target.closest(".node"); if (n && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); pick(n.dataset.c); } if (ev.key === "Escape") pick(null); });
+</script>
+</body>
+</html>
