@@ -1,4 +1,6 @@
-# lucky-agent
+# show_me_the_coffees
+
+agents for ordering coffees for you with coupons all you had!
 
 瑞幸点单助手。一个本地 MCP Server，叠在瑞幸官方 MCP 之上，增加：
 
