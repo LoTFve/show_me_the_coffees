@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export interface Favorite {
@@ -26,7 +26,22 @@ export interface Data {
   orders: OrderLog[];
 }
 
-const empty = (): Data => ({ preferences: {}, stores: {}, favorites: [], orders: [] });
+export async function readToken(file: string): Promise<string | undefined> {
+  try {
+    return (await readFile(file, "utf8")).trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** token 单独存一个文件，仅当前用户可读 */
+export async function saveToken(dir: string, file: string, token: string): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  await writeFile(file, token, { encoding: "utf8", mode: 0o600 });
+  await chmod(file, 0o600).catch(() => {});
+}
+
+const empty = (): Data =>({ preferences: {}, stores: {}, favorites: [], orders: [] });
 const MAX_ORDERS = 50;
 
 export class LocalStore {
@@ -53,7 +68,17 @@ export class LocalStore {
     // 先写临时文件再改名，避免写一半损坏
     const tmp = `${this.file}.tmp`;
     await writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
-    await rename(tmp, this.file);
+    // Windows 上杀毒/索引可能短暂占用目标文件，导致 rename 报 EPERM/EBUSY
+    for (let i = 0; ; i++) {
+      try {
+        await rename(tmp, this.file);
+        break;
+      } catch (e) {
+        const code = (e as NodeJS.ErrnoException).code;
+        if (i >= 10 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) throw e;
+        await new Promise((r) => setTimeout(r, 20 * (i + 1)));
+      }
+    }
     return data;
   }
 }

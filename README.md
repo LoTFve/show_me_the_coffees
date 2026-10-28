@@ -2,52 +2,51 @@
 
 agents for ordering coffees for you with coupons all you had!
 
-瑞幸点单助手。一个本地 MCP Server，叠在瑞幸官方 MCP 之上，增加：
+瑞幸点单助手。瑞幸一单只能用一张券，点 10 杯就要手动下 10 单。这个插件帮你自动拆单，每单用一张券，整批只需确认一次。
 
-- 本地记忆：口味偏好、常用门店、收藏组合、最近订单（`~/.lucky-agent/data.json`）
-- 拆单用券：10 杯拆成 10 单，每单用一张不同的券；整批只确认一次，逐单下单，失败即停，结果未知时不会自动重试
-- 下单保护：下单 / 支付 / 取消等写操作必须二次确认，确认码一次性、5 分钟过期、参数改了就失效
-- 配套 Skill：`skills/luckin-order/SKILL.md` 规定点单流程
+## 安装
+
+需要 Claude Code 2.1.275 及以上，以及 Node.js 20 及以上。
+
+```sh
+/plugin install lucky-agent --marketplace LoTFve/show_me_the_coffees
+```
+
+装好后直接说"点 10 杯生椰拿铁"。第一次用时会让你登录：
+
+1. 打开 <https://open.lkcoffee.com/mcp>，用手机号和短信验证码登录
+2. 复制页面上的 Token，发到对话里
+
+Token 保存在本机 `~/.lucky-agent/token`，只有你能读。大约一个月过期，过期后会提示你重新发一次。
+
+## 能做什么
+
+- 拆单用券：每单先预览，用瑞幸自动选出的券下单。实付超过上限或券重复就停，不会在券用完后按原价继续下
+- 下单保护：下单和取消必须你确认，确认码一次性、5 分钟过期、参数改了就失效
+- 记住偏好：口味、常用门店、收藏的组合，下次说"老样子"就行
+
+官方接口目前只支持到店自取。
 
 ## 工具
 
 | 工具 | 作用 |
 | --- | --- |
+| `luckin_login` | 验证并保存 Token |
 | `luckin_tools` | 列出官方工具，标注哪些是写操作 |
 | `luckin_call` | 调用官方工具；写操作走两步确认 |
-| `luckin_batch` | 拆单批量下单：每单各用一张券，整批确认一次，逐单执行，遇错即停 |
+| `luckin_batch` | 拆单下单：每单一张券，整批确认一次，遇错即停 |
 | `lucky_profile` | 读取偏好、门店、收藏、最近订单 |
 | `lucky_remember` | 保存 / 删除偏好、门店、收藏 |
 
-## 配置
-
-打开 <https://open.lkcoffee.com/mcp>，用手机号和短信验证码登录，复制页面上的 Token。Token 大约一个月过期。
-
-| 环境变量 | 说明 |
-| --- | --- |
-| `LUCKIN_MCP_TOKEN` | 官方 token，以 `Authorization: Bearer` 发送，不落盘 |
-| `LUCKIN_MCP_URL` | 可选，官方 MCP 地址，默认 `https://gwmcp.lkcoffee.com/order/user/mcp` |
-| `LUCKIN_WRITE_TOOLS` | 可选，逗号分隔，补充需要确认的官方工具名 |
-| `LUCKY_AGENT_HOME` | 可选，数据目录，默认 `~/.lucky-agent` |
-
-写操作按工具名识别（含 create / submit / pay / cancel 等，且不含 query / list / get 等）。拿到官方工具列表后，先用 `luckin_tools` 核对 `write` 标注，漏判的加进 `LUCKIN_WRITE_TOOLS`。
-
-## 使用
+## 开发
 
 ```sh
 npm install
-npm run build
 npm test
-```
-
-作为 Claude Code 插件加载（含 Skill 和 MCP）：
-
-```sh
+npm run build   # tsc 检查 + 打包到 bundle/server.mjs
 claude --plugin-dir .
 ```
 
-或只注册 MCP：
+`bundle/server.mjs` 是打包好的单文件，提交在仓库里，用户安装时不需要 `npm install`。改了 `src/` 记得重新 `npm run build` 再提交。
 
-```sh
-claude mcp add lucky-agent -e LUCKIN_MCP_URL=<url> -e LUCKIN_MCP_TOKEN=<token> -- node /path/to/lucky-agent/dist/index.js
-```
+可选环境变量：`LUCKIN_MCP_TOKEN`（优先于保存的 Token）、`LUCKIN_MCP_URL`（默认 `https://gwmcp.lkcoffee.com/order/user/mcp`）、`LUCKIN_WRITE_TOOLS`、`LUCKY_AGENT_HOME`。

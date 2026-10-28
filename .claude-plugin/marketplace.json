@@ -1,0 +1,14 @@
+{
+  "name": "show-me-the-coffees",
+  "owner": {
+    "name": "LoTFve"
+  },
+  "description": "用上你所有的瑞幸优惠券点咖啡",
+  "plugins": [
+    {
+      "name": "lucky-agent",
+      "source": "./",
+      "description": "瑞幸点单助手：拆单用券、偏好记忆、下单二次确认"
+    }
+  ]
+}

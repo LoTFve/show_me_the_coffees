@@ -3,14 +3,17 @@ import { join } from "node:path";
 
 // Token 在 https://open.lkcoffee.com/mcp 登录后获取
 export const DEFAULT_UPSTREAM = "https://gwmcp.lkcoffee.com/order/user/mcp";
+export const TOKEN_PAGE = "https://open.lkcoffee.com/mcp";
 
 export interface Config {
   /** 瑞幸官方 MCP Server 地址（Streamable HTTP） */
-  upstreamUrl?: string;
-  /** 官方平台发放的访问 token，只在内存中使用，不落盘 */
+  upstreamUrl: string;
+  /** 环境变量里的 token；优先于本地保存的 token */
   upstreamToken?: string;
-  /** 本地数据目录：偏好、常用门店、下单记录 */
+  /** 本地数据目录：偏好、常用门店、下单记录、token */
   dataDir: string;
+  /** 用户在对话里给的 token 保存在这里（权限 600） */
+  tokenFile: string;
   /** 额外视为“写操作”的上游工具名（逗号分隔），补充内置规则 */
   extraWriteTools: string[];
   /** 确认码有效期（毫秒） */
@@ -18,10 +21,12 @@ export interface Config {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const dataDir = env.LUCKY_AGENT_HOME || join(homedir(), ".lucky-agent");
   return {
-    upstreamUrl: env.LUCKIN_MCP_URL || (env.LUCKIN_MCP_TOKEN ? DEFAULT_UPSTREAM : undefined),
+    upstreamUrl: env.LUCKIN_MCP_URL || DEFAULT_UPSTREAM,
     upstreamToken: env.LUCKIN_MCP_TOKEN || undefined,
-    dataDir: env.LUCKY_AGENT_HOME || join(homedir(), ".lucky-agent"),
+    dataDir,
+    tokenFile: join(dataDir, "token"),
     extraWriteTools: (env.LUCKIN_WRITE_TOOLS ?? "")
       .split(",")
       .map((s) => s.trim())

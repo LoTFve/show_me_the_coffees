@@ -1,5 +1,9 @@
 {
   "name": "lucky-agent",
-  "version": "0.1.0",
-  "description": "瑞幸点单助手：偏好记忆、常用门店、下单二次确认，基于瑞幸官方 MCP"
+  "version": "0.2.0",
+  "description": "瑞幸点单助手：拆单用券、偏好记忆、下单二次确认，基于瑞幸官方 MCP",
+  "author": {
+    "name": "LoTFve"
+  },
+  "repository": "https://github.com/LoTFve/show_me_the_coffees"
 }

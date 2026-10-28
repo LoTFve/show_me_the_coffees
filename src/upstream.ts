@@ -80,10 +80,12 @@ export function businessFailed(text: string): boolean {
   }
 }
 
+export const isAuthError = (msg: string) => /401|403|unauthorized|invalid token|令牌无效|已过期/i.test(msg);
+
 function friendly(e: unknown): Error {
   const msg = String((e as Error)?.message ?? e);
-  if (/401|403|unauthorized|invalid token/i.test(msg)) {
-    return new Error("瑞幸账户授权失效或 token 无效，请在官方平台重新获取 LUCKIN_MCP_TOKEN");
+  if (isAuthError(msg)) {
+    return new Error("瑞幸 Token 无效或已过期（约一个月过期）。请到 https://open.lkcoffee.com/mcp 重新登录复制 Token，发给我即可。");
   }
   return new Error(`连接瑞幸官方 MCP 失败：${msg}`);
 }

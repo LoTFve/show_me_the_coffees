@@ -1,9 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { Config } from "./config.js";
+import { TOKEN_PAGE, type Config } from "./config.js";
 import { ConfirmGate, isWriteTool } from "./guard.js";
-import type { LocalStore } from "./store.js";
-import type { Upstream } from "./upstream.js";
+import { readToken, saveToken, type LocalStore } from "./store.js";
+import { isAuthError, type Upstream } from "./upstream.js";
 
 const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
 const fail = (text: string) => ({ content: [{ type: "text" as const, text }], isError: true });
@@ -27,15 +27,50 @@ const INSTRUCTIONS = `瑞幸点单助手。流程：
 4. 瑞幸每单只用一张券（previewOrder 自动选券）。多杯时用 luckin_batch 拆成每单 1 杯，并设好每单实付上限。同样先返回计划，用户确认后再带确认码执行。
 5. 用户表达新的偏好（如“以后都少冰”）时用 lucky_remember 记下来。`;
 
-export function createServer(deps: { config: Config; store: LocalStore; upstream?: Upstream; gate?: ConfirmGate }) {
-  const { config, store, upstream } = deps;
+export function createServer(deps: {
+  config: Config;
+  store: LocalStore;
+  /** 用 token 建立上游连接 */
+  connect: (token: string) => Upstream;
+  gate?: ConfirmGate;
+}) {
+  const { config, store, connect } = deps;
   const gate = deps.gate ?? new ConfirmGate(config.confirmTtlMs);
   const server = new McpServer({ name: "lucky-agent", version: "0.1.0" }, { instructions: INSTRUCTIONS });
 
-  const needUpstream = () =>
-    upstream
+  // token 来源：环境变量优先，其次是用户在对话里通过 luckin_login 保存的
+  let upstream: Upstream | undefined;
+  const resolve = async () => {
+    if (upstream) return;
+    const token = config.upstreamToken ?? (await readToken(config.tokenFile));
+    if (token) upstream = connect(token);
+  };
+  const needUpstream = async () => {
+    await resolve();
+    return upstream
       ? null
-      : fail("还没配置瑞幸 token。请到 https://open.lkcoffee.com/mcp 登录获取 Token，设置环境变量 LUCKIN_MCP_TOKEN 后重启。");
+      : fail(`还没有瑞幸 Token。请让用户打开 ${TOKEN_PAGE}，手机号登录后复制页面上的 Token 发过来，然后调用 luckin_login 保存。`);
+  };
+
+  server.registerTool(
+    "luckin_login",
+    {
+      description: `保存用户的瑞幸 Token（从 ${TOKEN_PAGE} 获取，约一个月过期）。会先连接官方验证，有效才保存到本机。用户在对话里贴出 Token 时调用。`,
+      inputSchema: { token: z.string().min(8).describe("用户提供的瑞幸 Token") },
+    },
+    async ({ token }) => {
+      const candidate = connect(token.trim());
+      try {
+        const tools = await candidate.listTools();
+        await saveToken(config.dataDir, config.tokenFile, token.trim());
+        upstream = candidate;
+        return ok(`Token 有效，已保存到本机（${config.tokenFile}）。官方提供 ${tools.length} 个工具，可以开始点单了。`);
+      } catch (e) {
+        const msg = (e as Error).message;
+        return fail(isAuthError(msg) ? `Token 无效或已过期，没有保存。请让用户到 ${TOKEN_PAGE} 重新登录复制 Token。` : msg);
+      }
+    },
+  );
 
   server.registerTool(
     "luckin_tools",
@@ -44,7 +79,7 @@ export function createServer(deps: { config: Config; store: LocalStore; upstream
       inputSchema: {},
     },
     async () => {
-      const missing = needUpstream();
+      const missing = await needUpstream();
       if (missing) return missing;
       try {
         const tools = await upstream!.listTools();
@@ -67,7 +102,7 @@ export function createServer(deps: { config: Config; store: LocalStore; upstream
       },
     },
     async ({ tool, args, confirm_code }) => {
-      const missing = needUpstream();
+      const missing = await needUpstream();
       if (missing) return missing;
       const write = isWriteTool(tool, config.extraWriteTools);
 
@@ -131,7 +166,7 @@ export function createServer(deps: { config: Config; store: LocalStore; upstream
       },
     },
     async ({ confirm_code, ...plan }) => {
-      const missing = needUpstream();
+      const missing = await needUpstream();
       if (missing) return missing;
       const { deptId, longitude, latitude, orders, max_pay_each } = plan;
       const lines = orders.map(

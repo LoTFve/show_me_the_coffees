@@ -6,6 +6,9 @@ import { LocalStore } from "./store.js";
 import { McpUpstream } from "./upstream.js";
 
 const config = loadConfig();
-const upstream = config.upstreamUrl ? McpUpstream.http(config.upstreamUrl, config.upstreamToken) : undefined;
-const server = createServer({ config, store: new LocalStore(config.dataDir), upstream });
+const server = createServer({
+  config,
+  store: new LocalStore(config.dataDir),
+  connect: (token) => McpUpstream.http(config.upstreamUrl, token),
+});
 await server.connect(new StdioServerTransport());

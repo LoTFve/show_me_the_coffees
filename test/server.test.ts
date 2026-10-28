@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -60,11 +60,11 @@ describe("lucky-agent", () => {
     dir = await mkdtemp(join(tmpdir(), "lucky-"));
     up = new FakeUpstream();
     clock = 0;
-    const config = { ...loadConfig({}), dataDir: dir, confirmTtlMs: 1000 };
+    const config = { ...loadConfig({ LUCKIN_MCP_TOKEN: "env-token" }), dataDir: dir, confirmTtlMs: 1000 };
     const server = createServer({
       config,
       store: new LocalStore(dir),
-      upstream: up,
+      connect: () => up,
       gate: new ConfirmGate(1000, () => clock),
     });
     const [a, b] = InMemoryTransport.createLinkedPair();
@@ -225,14 +225,53 @@ describe("lucky-agent", () => {
     expect(p.preferences).toEqual({});
   });
 
-  it("explains missing upstream config", async () => {
-    const server = createServer({ config: { ...loadConfig({}), dataDir: dir }, store: new LocalStore(dir) });
+  /** 没有环境变量 token 的服务端；connect 记录收到的 token，"bad" 视为无效 */
+  const noEnvClient = async (tokens: string[]) => {
+    const config = { ...loadConfig({}), dataDir: dir, tokenFile: join(dir, "token") };
+    const server = createServer({
+      config,
+      store: new LocalStore(dir),
+      connect: (t) => {
+        tokens.push(t);
+        if (!t.startsWith("bad")) return up;
+        return { listTools: async () => Promise.reject(new Error("访问令牌无效或已过期")), callTool: async () => ({ text: "", isError: true }) };
+      },
+    });
     const [a, b] = InMemoryTransport.createLinkedPair();
     await server.connect(a);
     const c = new Client({ name: "t", version: "0" });
     await c.connect(b);
+    return c;
+  };
+
+  it("asks for a token with the official link when none is set", async () => {
+    const c = await noEnvClient([]);
     const r = await c.callTool({ name: "luckin_tools", arguments: {} });
     expect(r.isError).toBe(true);
-    expect(text(r)).toContain("LUCKIN_MCP_TOKEN");
+    expect(text(r)).toContain("open.lkcoffee.com/mcp");
+    expect(text(r)).toContain("luckin_login");
+  });
+
+  it("login validates, saves, and is reused after restart", async () => {
+    const tokens: string[] = [];
+    const c = await noEnvClient(tokens);
+    const r = await c.callTool({ name: "luckin_login", arguments: { token: "  good-token-123  " } });
+    expect(text(r)).toContain("Token 有效");
+    expect((await readFile(join(dir, "token"), "utf8"))).toBe("good-token-123");
+
+    // 新进程：从文件读 token
+    const seen: string[] = [];
+    const c2 = await noEnvClient(seen);
+    const t = await c2.callTool({ name: "luckin_tools", arguments: {} });
+    expect(t.isError).toBeFalsy();
+    expect(seen).toEqual(["good-token-123"]);
+  });
+
+  it("login rejects an invalid token without saving it", async () => {
+    const c = await noEnvClient([]);
+    const r = await c.callTool({ name: "luckin_login", arguments: { token: "bad-token-123" } });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain("open.lkcoffee.com/mcp");
+    await expect(readFile(join(dir, "token"), "utf8")).rejects.toThrow();
   });
 });

@@ -42,5 +42,5 @@ description: 瑞幸咖啡点单助手。用户想点瑞幸、来杯咖啡、"老
 
 ## 出错
 
-- 提示未配置 token：告诉用户打开 https://open.lkcoffee.com/mcp 登录复制 Token，设置 `LUCKIN_MCP_TOKEN` 后重启。Token 约一个月过期。
-- 授权失效：提示重新获取 token，不要反复重试。
+- 提示没有 Token：让用户打开 https://open.lkcoffee.com/mcp 用手机号登录，复制 Token 发过来，然后调用 `luckin_login` 保存。不用重启。
+- Token 过期：同样让用户重新登录复制 Token 发过来，再调用 `luckin_login`。不要反复重试。
