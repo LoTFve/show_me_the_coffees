@@ -12,11 +12,46 @@
 - 发布前在 `.claude-plugin/plugin.json` 里升版本号，不升的话用户的 `claude plugin update` 拿不到新版。
 - 提交前确认没有 Token：`grep -rn <token 前几位> --exclude-dir=node_modules --exclude-dir=.git .`
 
-## 验证
+## 提交前的测试
 
-- `npm test` 必须全部通过。测试用模拟的上游服务，不连真实瑞幸接口。
-- `claude plugin validate .` 必须通过。
-- 连真实接口时只能调只读工具（`queryShopList`、`searchProductForMcp`、`previewOrder`、`queryOrderDetailInfo` 等）。`createOrder` 和 `cancelOrder` 会产生真实订单或扣款，必须经用户明确同意。
+所有改动提交前都要通过全部测试，有失败就不提交。
+
+- `npm test`（vitest），测试用模拟的上游服务，不连真实瑞幸接口。
+- 改了 `src/` 的，还要跑 `npm run build`。它会做 `tsc` 类型检查并重新打包。
+- 改了 `.claude-plugin/`、`.mcp.json` 或 `skills/` 的，还要跑 `claude plugin validate .`。
+- 改了下单主链路（`luckin_batch`、`luckin_call` 的写操作、`src/upstream.ts`），还要用打包后的 `bundle/server.mjs` 连真实瑞幸接口，跑一遍只读流程：查门店 → 搜商品 → `previewOrder`。数据目录用临时目录（`LUCKY_AGENT_HOME`），跑完删掉。
+- 以后加了其他语言的测试（比如 Python 的 `pytest`），也要一起跑。
+- 失败的用例和本次改动无关时，可以提交，但要在 PR 描述里写清楚是哪些用例、为什么失败。
+
+连真实接口时只能调只读工具（`queryShopList`、`searchProductForMcp`、`previewOrder`、`queryOrderDetailInfo` 等）。`createOrder` 和 `cancelOrder` 会产生真实订单或扣款，必须经用户明确同意。
+
+## PR 描述
+
+每个 PR 都要有完整的描述，至少写清楚下面四项。只写标题，或者只写"见提交记录"的 PR 不合格。
+
+1. **改了什么、为什么改。**
+2. **影响范围**：MCP 工具（名称、参数、返回格式）、Skill 流程、插件配置（`plugin.json`、`.mcp.json`、版本号）、本地数据（`~/.lucky-agent/` 下的文件格式）、环境变量。没有影响的写"无"。
+3. **怎么验证的**：跑了哪些测试，结果怎样（比如"`npm test` 17 passed"）；有没有连真实瑞幸接口试过，试了哪些工具；有没有真实下单。
+4. **没做的、已知的问题。**
+
+## 给用户的 PR 链接
+
+用户打开链接时，PR 描述必须已经填好上面四项，不需要再复制粘贴任何内容。
+
+- **能用 `gh` 时**：直接 `gh pr create` 建好 PR，给 PR 本身的链接。描述写在 `--body-file` 里，不要用 `--body` 传长文本，那样换行和引号容易出错。
+- **不能用 `gh` 时**：
+  1. 把分支整理成相对目标分支只有一个提交。提交信息第一行写 PR 标题，正文写完整描述。
+  2. 给链接前运行 `git rev-list --count origin/<目标分支>..<分支>`，确认结果是 1。
+  3. 给短链接：`https://github.com/LoTFve/show_me_the_coffees/compare/<目标分支>...<分支>?expand=1`。分支只有一个提交时，GitHub 会用提交信息自动填好标题和描述。
+- **不要把描述放进链接的 `body=` 参数。** 中文编码后很容易超过 GitHub 的 URL 长度上限，打开就会报 "URL is too long"。
+- 不要给打开后描述为空或不完整的链接，也不要只把描述贴在对话里，让用户自己复制。
+
+## 鉴权和密钥
+
+- 瑞幸 Token 只在服务端使用：从 `LUCKIN_MCP_TOKEN` 环境变量或 `~/.lucky-agent/token`（权限 600）读取，以 `Authorization: Bearer` 请求头发给上游。
+- 不要把 Token 放进 URL 或查询参数，不要写进日志、错误信息、MCP 工具的返回结果，也不要写进 `data.json` 的下单记录。
+- 不要把 Token 提交到仓库，也不要写进测试数据。
+- 不要信任工具参数里传来的身份信息。用户身份只来自上面这个 Token。
 
 ## 瑞幸官方 MCP 的实际行为（实测，不在官方文档里）
 
