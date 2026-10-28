@@ -7,7 +7,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const src = readFileSync(join(root, "docs/luckin-co.md"), "utf8");
+// Windows 上 git 可能检出成 CRLF，统一成 LF 再解析
+const src = readFileSync(join(root, "docs/luckin-co.md"), "utf8").replace(/\r\n/g, "\n");
 const ke = [...src.matchAll(/```ke\n([\s\S]*?)```/g)].map((m) => m[1]).join("\n");
 
 // 值类型：画成节点里的属性，不画成独立节点
