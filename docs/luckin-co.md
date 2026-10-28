@@ -4,6 +4,8 @@
 
 状态：候选，未经独立建模比对。第 5 节列出的缺口未解决前，相关契约不能当作已确认。
 
+关系图见 [luckin-co-diagram.md](luckin-co-diagram.md)。
+
 ## 1. 需求拆解
 
 | 需求 | 对象 | 关系 | 条件 | 输出 |
@@ -217,12 +219,14 @@ op is_order_allowed(Order) : Bool ,
 op count(Concept) : Number ,
 
 (count({o | var o : sku_option(s) , option_attribute(o) = a}) = 1 :- var s : Sku , var a : product_attribute(sku_product(s))) ,
-(sku_option(sku_switch(st , s , o)) : Option :- var st : Store , var s : Sku , var o : Option , is_product_option_selectable(st , sku_product(s) , o) = true) ;
+(o : sku_option(sku_switch(st , s , o)) :- var st : Store , var s : Sku , var o : Option , is_product_option_selectable(st , sku_product(s) , o) = true) ;
 ```
 
 第一条：每个 sku 在每个属性上恰好选中一个选项。依据是实测的 3 个 sku 都满足。
 
-第二条只表示切换结果是一个合法的 sku。"切换后包含新选项、同一属性的旧选项被换掉、其他属性不变"在实测中成立，但要写成规则得先有集合运算接口，这里不写，只在文字中记录。
+第二条：切换到某个选项后，新 sku 包含这个选项。写法沿用 SOP 10.9 的成员约束 `x : 集合`。实测超大杯、少甜两次切换都满足。
+
+"同一属性的旧选项被换掉、其他属性不变"在实测中也成立，但要写成规则得先有集合运算接口，这里不写，只在文字中记录（缺口 G7）。
 
 原价随选项加价的关系（大杯 ¥18，超大杯 ¥21）只有一个样本，不写成规则。
 
