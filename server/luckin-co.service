@@ -1,0 +1,21 @@
+# 用户级 systemd 服务：本体库总服务器。
+# 安装：cp server/luckin-co.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now luckin-co
+[Unit]
+Description=瑞幸点单本体库总服务器
+After=network.target
+
+[Service]
+WorkingDirectory=%h/show_me_the_coffees
+ExecStart=/usr/bin/node server/index.mjs
+Environment=CO_HOST=127.0.0.1
+Environment=CO_PORT=8790
+Restart=on-failure
+RestartSec=3
+# 数据目录之外只读，降低出问题时的影响面
+ProtectSystem=strict
+ReadWritePaths=%h/show_me_the_coffees/server/data
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>瑞幸本体库 · 总服务器</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fafafa; --fg:#111827; --muted:#6b7280; --line:#e5e7eb; --card:#fff; --accent:#2563eb; --bad:#dc2626; --ok:#059669; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e5e7eb; --muted:#9ca3af; --line:#2a2f3a; --card:#1a1d24; --accent:#60a5fa; --bad:#f87171; --ok:#34d399; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.6 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; align-items:center; gap:16px; padding:12px 24px; border-bottom:1px solid var(--line); background:var(--card); }
+  header h1 { font-size:17px; margin:0; }
+  header .who { margin-left:auto; color:var(--muted); }
+  nav { display:flex; gap:4px; padding:8px 24px; }
+  nav button { border:0; background:none; color:var(--muted); padding:6px 12px; border-radius:6px; cursor:pointer; font:inherit; }
+  nav button[aria-selected="true"] { background:var(--card); color:var(--fg); font-weight:600; }
+  main { padding:8px 24px 32px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:12.5px; }
+  code, .mono { font-family:ui-monospace, Consolas, monospace; font-size:12.5px; }
+  .muted { color:var(--muted); }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { border:1px solid var(--line); border-radius:999px; padding:1px 10px; font-size:12.5px; }
+  input, select { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
+  button.act { font:inherit; border:1px solid var(--line); background:var(--bg); color:var(--fg); border-radius:6px; padding:4px 10px; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.danger { color:var(--bad); }
+  .msg { padding:8px 12px; border-radius:6px; margin-bottom:12px; }
+  .msg.bad { background:color-mix(in srgb, var(--bad) 12%, transparent); color:var(--bad); }
+  .msg.ok { background:color-mix(in srgb, var(--ok) 12%, transparent); color:var(--ok); }
+  .login { max-width:420px; margin:12vh auto; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>瑞幸本体库 · 总服务器</h1>
+  <span id="ver" class="muted"></span>
+  <span class="who" id="who"></span>
+  <button class="act" id="logout" hidden>退出</button>
+</header>
+
+<section id="login" class="card login" hidden>
+  <h2 style="margin-top:0">登录</h2>
+  <p class="muted">输入管理员发给你的成员令牌。令牌只存在浏览器的 HttpOnly cookie 里。</p>
+  <div id="loginMsg"></div>
+  <form id="loginForm" class="row">
+    <input id="token" type="password" autocomplete="off" placeholder="成员令牌" style="flex:1" required>
+    <button class="act primary" type="submit">登录</button>
+  </form>
+</section>
+
+<div id="app" hidden>
+  <nav role="tablist">
+    <button role="tab" data-tab="options" aria-selected="true">选项与别名</button>
+    <button role="tab" data-tab="operators">算子</button>
+    <button role="tab" data-tab="concepts">概念</button>
+    <button role="tab" data-tab="changes">改动记录</button>
+  </nav>
+  <main>
+    <div id="msg"></div>
+    <section data-panel="options"></section>
+    <section data-panel="operators" hidden></section>
+    <section data-panel="concepts" hidden></section>
+    <section data-panel="changes" hidden></section>
+  </main>
+</div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

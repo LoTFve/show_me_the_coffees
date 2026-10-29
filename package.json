@@ -4,11 +4,12 @@
   "description": "瑞幸点单助手 MCP：偏好记忆 + 下单二次确认，基于瑞幸官方 MCP",
   "main": "dist/index.js",
   "scripts": {
-    "test": "vitest run",
-    "build": "tsc && npm run bundle",
+    "test": "vitest run --dir test",
+    "build": "tsc && npm run bundle && npm run bundle:co",
     "start": "node dist/index.js",
     "bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=bundle/server.mjs --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\" --log-level=warning",
-    "co-diagram": "node scripts/co-diagram.mjs"
+    "co-diagram": "node scripts/co-diagram.mjs",
+    "bundle:co": "esbuild src/ontology.ts --format=esm --platform=node --target=node20 --outfile=server/lib/ontology.mjs --log-level=warning"
   },
   "keywords": [],
   "author": "",

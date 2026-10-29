@@ -5,3 +5,6 @@ dist/
 # 本机参考资料，不提交
 docs/ke-data-annotation-sop/
 *.zip
+
+# 总服务器运行时数据：本体副本、成员令牌哈希、改动记录
+server/data/
