@@ -1,0 +1,833 @@
+{
+  "version": 1,
+  "updatedAt": "2026-10-29",
+  "source": "docs/luckin-co.md",
+  "note": "瑞幸点单本体库（Concept 与 Operator）。说明和依据见 docs/luckin-co.md；本文件是结构化数据的唯一依据。",
+  "valueTypes": [
+    "String",
+    "Number",
+    "Bool",
+    "Price",
+    "Time",
+    "DateTime",
+    "Coordinate",
+    "Concept"
+  ],
+  "concepts": [
+    {
+      "name": "Store",
+      "group": "store",
+      "role": "有身份的对象",
+      "identity": "deptId"
+    },
+    {
+      "name": "Product",
+      "group": "product",
+      "role": "有身份的对象",
+      "identity": "productId"
+    },
+    {
+      "name": "Attribute",
+      "group": "product",
+      "role": "领域类别",
+      "identity": "attributeId"
+    },
+    {
+      "name": "Option",
+      "group": "product",
+      "role": "领域类别",
+      "identity": "attributeId（子层）"
+    },
+    {
+      "name": "Sku",
+      "group": "product",
+      "role": "有身份的对象",
+      "identity": "skuCode"
+    },
+    {
+      "name": "Quote",
+      "group": "quote",
+      "role": "记录",
+      "identity": "无官方 ID"
+    },
+    {
+      "name": "Coupon",
+      "group": "quote",
+      "role": "有身份的对象",
+      "identity": "券码，如 SY…1954"
+    },
+    {
+      "name": "OrderLine",
+      "group": "quote",
+      "role": "记录",
+      "identity": "无官方 ID"
+    },
+    {
+      "name": "Order",
+      "group": "order",
+      "role": "有身份的对象",
+      "identity": "orderIdStr"
+    },
+    {
+      "name": "OrderStatus",
+      "group": "order",
+      "role": "领域类别",
+      "identity": "orderStatus"
+    }
+  ],
+  "operators": [
+    {
+      "name": "store_name",
+      "inputs": [
+        "Store"
+      ],
+      "output": "String",
+      "many": false,
+      "section": "3.1 门店"
+    },
+    {
+      "name": "store_address",
+      "inputs": [
+        "Store"
+      ],
+      "output": "String",
+      "many": false,
+      "section": "3.1 门店"
+    },
+    {
+      "name": "store_coordinate",
+      "inputs": [
+        "Store"
+      ],
+      "output": "Coordinate",
+      "many": false,
+      "section": "3.1 门店"
+    },
+    {
+      "name": "store_opentime",
+      "inputs": [
+        "Store"
+      ],
+      "output": "Time",
+      "many": false,
+      "section": "3.1 门店"
+    },
+    {
+      "name": "store_closetime",
+      "inputs": [
+        "Store"
+      ],
+      "output": "Time",
+      "many": false,
+      "section": "3.1 门店"
+    },
+    {
+      "name": "is_store_open",
+      "inputs": [
+        "Store",
+        "DateTime"
+      ],
+      "output": "Bool",
+      "many": false,
+      "section": "3.1 门店"
+    },
+    {
+      "name": "is_store_delivery_supported",
+      "inputs": [
+        "Store"
+      ],
+      "output": "Bool",
+      "many": false,
+      "section": "3.1 门店"
+    },
+    {
+      "name": "coordinate_nearby_store",
+      "inputs": [
+        "Coordinate"
+      ],
+      "output": "Store",
+      "many": true,
+      "section": "3.1 门店"
+    },
+    {
+      "name": "store_distance",
+      "inputs": [
+        "Store",
+        "Coordinate"
+      ],
+      "output": "Number",
+      "many": false,
+      "section": "3.1 门店"
+    },
+    {
+      "name": "product_name",
+      "inputs": [
+        "Product"
+      ],
+      "output": "String",
+      "many": false,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "store_product_search",
+      "inputs": [
+        "Store",
+        "String"
+      ],
+      "output": "Product",
+      "many": true,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "is_product_search_fallback",
+      "inputs": [
+        "Store",
+        "String",
+        "Product"
+      ],
+      "output": "Bool",
+      "many": false,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "is_product_new",
+      "inputs": [
+        "Product"
+      ],
+      "output": "Bool",
+      "many": false,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "store_product_initialprice",
+      "inputs": [
+        "Store",
+        "Product"
+      ],
+      "output": "Price",
+      "many": false,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "product_attribute",
+      "inputs": [
+        "Product"
+      ],
+      "output": "Attribute",
+      "many": true,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "attribute_option",
+      "inputs": [
+        "Attribute"
+      ],
+      "output": "Option",
+      "many": true,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "option_attribute",
+      "inputs": [
+        "Option"
+      ],
+      "output": "Attribute",
+      "many": false,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "store_product_attribute_option",
+      "inputs": [
+        "Store",
+        "Product",
+        "Attribute"
+      ],
+      "output": "Option",
+      "many": true,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "product_attribute_defaultoption",
+      "inputs": [
+        "Product",
+        "Attribute"
+      ],
+      "output": "Option",
+      "many": false,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "is_product_option_selectable",
+      "inputs": [
+        "Store",
+        "Product",
+        "Option"
+      ],
+      "output": "Bool",
+      "many": false,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "product_option_extraprice",
+      "inputs": [
+        "Product",
+        "Option"
+      ],
+      "output": "Price",
+      "many": false,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "product_defaultsku",
+      "inputs": [
+        "Store",
+        "Product"
+      ],
+      "output": "Sku",
+      "many": false,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "sku_product",
+      "inputs": [
+        "Sku"
+      ],
+      "output": "Product",
+      "many": false,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "sku_option",
+      "inputs": [
+        "Sku"
+      ],
+      "output": "Option",
+      "many": true,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "sku_switch",
+      "inputs": [
+        "Store",
+        "Sku",
+        "Option"
+      ],
+      "output": "Sku",
+      "many": false,
+      "section": "3.2 商品与规格"
+    },
+    {
+      "name": "quote_store",
+      "inputs": [
+        "Quote"
+      ],
+      "output": "Store",
+      "many": false,
+      "section": "3.3 报价与券"
+    },
+    {
+      "name": "quote_orderline",
+      "inputs": [
+        "Quote"
+      ],
+      "output": "OrderLine",
+      "many": true,
+      "section": "3.3 报价与券"
+    },
+    {
+      "name": "quote_coupon",
+      "inputs": [
+        "Quote"
+      ],
+      "output": "Coupon",
+      "many": true,
+      "section": "3.3 报价与券"
+    },
+    {
+      "name": "quote_initialprice",
+      "inputs": [
+        "Quote"
+      ],
+      "output": "Price",
+      "many": false,
+      "section": "3.3 报价与券"
+    },
+    {
+      "name": "quote_payprice",
+      "inputs": [
+        "Quote"
+      ],
+      "output": "Price",
+      "many": false,
+      "section": "3.3 报价与券"
+    },
+    {
+      "name": "quote_discount",
+      "inputs": [
+        "Quote"
+      ],
+      "output": "Price",
+      "many": false,
+      "section": "3.3 报价与券"
+    },
+    {
+      "name": "orderline_sku",
+      "inputs": [
+        "OrderLine"
+      ],
+      "output": "Sku",
+      "many": false,
+      "section": "3.3 报价与券"
+    },
+    {
+      "name": "orderline_product",
+      "inputs": [
+        "OrderLine"
+      ],
+      "output": "Product",
+      "many": false,
+      "section": "3.3 报价与券"
+    },
+    {
+      "name": "orderline_amount",
+      "inputs": [
+        "OrderLine"
+      ],
+      "output": "Number",
+      "many": false,
+      "section": "3.3 报价与券"
+    },
+    {
+      "name": "order_store",
+      "inputs": [
+        "Order"
+      ],
+      "output": "Store",
+      "many": false,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "order_orderline",
+      "inputs": [
+        "Order"
+      ],
+      "output": "OrderLine",
+      "many": true,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "order_coupon",
+      "inputs": [
+        "Order"
+      ],
+      "output": "Coupon",
+      "many": true,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "order_payprice",
+      "inputs": [
+        "Order"
+      ],
+      "output": "Price",
+      "many": false,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "order_status",
+      "inputs": [
+        "Order",
+        "DateTime"
+      ],
+      "output": "OrderStatus",
+      "many": false,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "order_createtime",
+      "inputs": [
+        "Order"
+      ],
+      "output": "DateTime",
+      "many": false,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "order_pickuptime",
+      "inputs": [
+        "Order"
+      ],
+      "output": "DateTime",
+      "many": false,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "order_pickupcode",
+      "inputs": [
+        "Order"
+      ],
+      "output": "String",
+      "many": false,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "order_payqrcodeurl",
+      "inputs": [
+        "Order"
+      ],
+      "output": "String",
+      "many": false,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "order_paydeeplink",
+      "inputs": [
+        "Order"
+      ],
+      "output": "String",
+      "many": false,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "is_order_payment_needed",
+      "inputs": [
+        "Order"
+      ],
+      "output": "Bool",
+      "many": false,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "coupon_order",
+      "inputs": [
+        "Coupon"
+      ],
+      "output": "Order",
+      "many": true,
+      "section": "3.4 订单"
+    },
+    {
+      "name": "count",
+      "inputs": [
+        "Concept"
+      ],
+      "output": "Number",
+      "many": false,
+      "section": "4.1 每次报价、每个订单最多一张券"
+    },
+    {
+      "name": "is_coupon_occupied",
+      "inputs": [
+        "Coupon",
+        "DateTime"
+      ],
+      "output": "Bool",
+      "many": false,
+      "section": "4.3 下单后券马上被占用，不用等付款"
+    },
+    {
+      "name": "quote_time",
+      "inputs": [
+        "Quote"
+      ],
+      "output": "DateTime",
+      "many": false,
+      "section": "4.4 报价只选未被占用的券"
+    },
+    {
+      "name": "is_order_allowed",
+      "inputs": [
+        "Order"
+      ],
+      "output": "Bool",
+      "many": false,
+      "section": "4.5 下单的前置条件"
+    }
+  ],
+  "attributes": [
+    {
+      "id": 64,
+      "name": "杯型"
+    },
+    {
+      "id": 17,
+      "name": "温度"
+    },
+    {
+      "id": 18,
+      "name": "糖度"
+    },
+    {
+      "id": 50,
+      "name": "咖啡豆"
+    },
+    {
+      "id": 113,
+      "name": "咖啡浓度"
+    },
+    {
+      "id": 16,
+      "name": "奶油"
+    },
+    {
+      "id": 37,
+      "name": "风味"
+    },
+    {
+      "id": 102,
+      "name": "奶基"
+    },
+    {
+      "id": 112,
+      "name": "气泡"
+    },
+    {
+      "id": 114,
+      "name": "小料"
+    },
+    {
+      "id": 120,
+      "name": "吸管"
+    }
+  ],
+  "options": [
+    {
+      "attribute": 64,
+      "id": 365,
+      "name": "大杯",
+      "aliases": [
+        "大的"
+      ],
+      "extraPrice": 0,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 64,
+      "id": 594,
+      "name": "超大杯",
+      "aliases": [
+        "特大杯",
+        "最大杯"
+      ],
+      "extraPrice": 3,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 17,
+      "id": 57,
+      "name": "冰",
+      "aliases": [
+        "冰的",
+        "加冰"
+      ],
+      "extraPrice": 0,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 17,
+      "id": 56,
+      "name": "热",
+      "aliases": [
+        "热的",
+        "温的"
+      ],
+      "extraPrice": 0,
+      "seenIn": "生椰拿铁"
+    },
+    {
+      "attribute": 17,
+      "id": 790,
+      "name": "全冰去水",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "全冰黑巧美式"
+    },
+    {
+      "attribute": 18,
+      "id": 60,
+      "name": "标准甜",
+      "aliases": [
+        "正常糖",
+        "全糖"
+      ],
+      "extraPrice": 0,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 18,
+      "id": 112,
+      "name": "少甜",
+      "aliases": [
+        "少糖"
+      ],
+      "extraPrice": 0,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 18,
+      "id": 59,
+      "name": "少少甜",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 18,
+      "id": 254,
+      "name": "微甜",
+      "aliases": [
+        "微糖"
+      ],
+      "extraPrice": 0,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 18,
+      "id": 69,
+      "name": "不另外加糖",
+      "aliases": [
+        "无糖",
+        "不加糖"
+      ],
+      "extraPrice": 0,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 50,
+      "id": 379,
+      "name": "意式拼配",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 50,
+      "id": 634,
+      "name": "深烘拼配",
+      "aliases": [
+        "深烘"
+      ],
+      "extraPrice": 0,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 50,
+      "id": 774,
+      "name": "埃塞金烘",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "生椰拿铁（仅国贸店）"
+    },
+    {
+      "attribute": 113,
+      "id": 706,
+      "name": "默认浓度",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 113,
+      "id": 707,
+      "name": "加单份浓缩",
+      "aliases": [
+        "加浓",
+        "加一份浓缩"
+      ],
+      "extraPrice": 3,
+      "seenIn": "4 款"
+    },
+    {
+      "attribute": 16,
+      "id": 53,
+      "name": "无奶油",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "生椰拿铁"
+    },
+    {
+      "attribute": 37,
+      "id": 830,
+      "name": "默认黑巧",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "全冰黑巧美式"
+    },
+    {
+      "attribute": 37,
+      "id": 821,
+      "name": "多黑巧",
+      "aliases": [],
+      "extraPrice": 2,
+      "seenIn": "全冰黑巧美式"
+    },
+    {
+      "attribute": 102,
+      "id": 817,
+      "name": "液体奶酪",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "全冰黑巧美式"
+    },
+    {
+      "attribute": 102,
+      "id": 813,
+      "name": "丝绒",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "全冰黑巧美式"
+    },
+    {
+      "attribute": 102,
+      "id": 869,
+      "name": "椰浆",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "全冰黑巧美式"
+    },
+    {
+      "attribute": 102,
+      "id": 875,
+      "name": "淡奶油",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "全冰黑巧美式"
+    },
+    {
+      "attribute": 112,
+      "id": 699,
+      "name": "气泡",
+      "aliases": [
+        "加气泡"
+      ],
+      "extraPrice": 2,
+      "seenIn": "乳酸菌美式"
+    },
+    {
+      "attribute": 112,
+      "id": 700,
+      "name": "无气泡",
+      "aliases": [
+        "不要气泡"
+      ],
+      "extraPrice": 0,
+      "seenIn": "乳酸菌美式"
+    },
+    {
+      "attribute": 114,
+      "id": 897,
+      "name": "不含桃丁",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "紫苏桃气泡美式"
+    },
+    {
+      "attribute": 120,
+      "id": 797,
+      "name": "百亿活菌吸管",
+      "aliases": [],
+      "extraPrice": 0,
+      "seenIn": "乳酸菌美式"
+    }
+  ]
+}
