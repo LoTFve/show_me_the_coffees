@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// 从 docs/luckin-co.md 的 ke 代码块生成 CO 关系图 docs/luckin-co.html。
-// 节点和边都取自 op 声明，不手写，所以改了 CO 之后重新运行即可同步。
+// 从 docs/luckin-co.md 的 ke 代码块生成 CO 图 docs/luckin-co.html。
+// 节点（Concept）和边（返回概念的 Operator）都取自 op 声明，不手写，所以改了 CO 之后重新运行即可同步。
 // 用法：node scripts/co-diagram.mjs
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -15,12 +15,17 @@ const ke = [...src.matchAll(/```ke\n([\s\S]*?)```/g)].map((m) => m[1]).join("\n"
 const VALUE = new Set(["String", "Number", "Bool", "Concept", "Time", "DateTime", "Coordinate", "Price"]);
 const concepts = [...new Set([...ke.matchAll(/^concept (\w+)/gm)].map((m) => m[1]))].filter((c) => !VALUE.has(c));
 
+// 各 ke 块要自足（SOP 8.1），同一个 op 会在多个块里重复声明，按签名去重
 const ops = [];
+const seenSig = new Set();
 for (const [, name, args, ret] of ke.matchAll(/^op (\w+)\(([^)]*)\) : (.+?) ,?;?$/gm)) {
   const many = /^set\(/.test(ret);
   const type = ret.replace(/^set\((.*)\)$/, "$1");
   const ins = args.split(",").map((s) => s.trim()).filter(Boolean);
-  ops.push({ name, ins, type, many, sig: `${name}(${ins.join(" , ")}) : ${ret}` });
+  const sig = `${name}(${ins.join(" , ")}) : ${ret}`;
+  if (seenSig.has(sig)) continue;
+  seenSig.add(sig);
+  ops.push({ name, ins, type, many, sig });
 }
 
 // 第一个输入是主语；返回概念 → 边，返回值类型 → 主语节点上的属性
@@ -125,7 +130,7 @@ const html = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>瑞幸点单 CO 关系图</title>
+<title>瑞幸点单 CO 图</title>
 <style>
   :root { color-scheme: light dark; --bg:#fafafa; --fg:#111827; --muted:#6b7280; --line:#9ca3af; --card:#fff; --hl:#111827; }
   @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e5e7eb; --muted:#9ca3af; --line:#6b7280; --card:#1a1d24; --hl:#f9fafb; } }
@@ -165,15 +170,15 @@ const html = `<!doctype html>
 </head>
 <body>
 <header>
-  <h1>瑞幸点单 CO 关系图</h1>
-  <p class="sub">由 <code>docs/luckin-co.md</code> 自动生成：${placed.length} 个概念、${edges.length} 条关系、${ops.length} 个 op。状态：候选，见原文第 5 节缺口。</p>
+  <h1>瑞幸点单 CO 图</h1>
+  <p class="sub">由 <code>docs/luckin-co.md</code> 自动生成：${placed.length} 个 Concept、${ops.length} 个 Operator。连线是返回概念的 ${edges.length} 个算子（二元关系，多元关系和变换按第一个输入画）；属性和谓词列在概念的详情里。状态：候选，见原文第 5 节缺口。</p>
 </header>
 <div class="legend">${legend}
-  <span class="key"><b>实线</b> 单值　<b>虚线</b> 多值（集合）　点概念看全部 op，再点空白处取消</span>
+  <span class="key"><b>框</b> Concept　<b>连线</b> Operator（<b>实线</b> 单值，<b>虚线</b> 多值）　点概念看它的全部 Operator，再点空白处取消</span>
 </div>
 <main>
   <div class="canvas">
-    <svg id="g" viewBox="0 0 1730 820" role="img" aria-label="瑞幸点单概念关系图">
+    <svg id="g" viewBox="0 0 1730 820" role="img" aria-label="瑞幸点单 Concept 与 Operator 图">
       <defs>
         <marker id="arrOne" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor" style="color:var(--line)"/></marker>
         <marker id="arrMany" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="currentColor" style="color:var(--line)"/></marker>
@@ -184,10 +189,10 @@ const html = `<!doctype html>
   </div>
   <aside id="side" aria-live="polite">
     <h2>点一个概念</h2>
-    <p class="empty">右侧会列出它的出边、入边和值属性，每条都是 <code>luckin-co.md</code> 里的原始 op 签名。</p>
+    <p class="empty">右侧会列出它的出边、入边和值属性，每条都是 <code>luckin-co.md</code> 里的原始 Operator 签名。</p>
   </aside>
 </main>
-<footer>重新生成：<code>node scripts/co-diagram.mjs</code>。改了 CO 的 op 声明后运行一次即可同步，不要手工编辑本文件。</footer>
+<footer>重新生成：<code>node scripts/co-diagram.mjs</code>。改了 CO 的 Operator 声明后运行一次即可同步，不要手工编辑本文件。</footer>
 <script>
 const D = ${JSON.stringify(detail)};
 const svg = document.getElementById("g"), side = document.getElementById("side");
@@ -217,4 +222,4 @@ svg.addEventListener("keydown", (ev) => { const n = ev.target.closest(".node"); 
 `;
 
 writeFileSync(join(root, "docs/luckin-co.html"), html);
-console.log(`docs/luckin-co.html：${placed.length} 个概念，${edges.length} 条关系，${ops.length} 个 op`);
+console.log(`docs/luckin-co.html：${placed.length} 个 Concept，${ops.length} 个 Operator（${edges.length} 个返回概念）`);
