@@ -42,7 +42,7 @@ class FakeUpstream implements Upstream {
       if (this.creates === this.errorOn) return { text: '{"code":1000,"msg":"券已失效","success":false}', isError: true };
       const used = (args.couponCodeList as string[] | undefined)?.[0];
       if (used && !this.sticky) this.coupons = this.coupons.filter((c) => c !== used);
-      const data = { orderIdStr: `7701${this.creates}`, needPay: true, payOrderQrCodeUrl: "https://pay/qr", payOrderUrl: "weixin://pay" };
+      const data = { orderIdStr: `7701${this.creates}`, needPay: true, discountPrice: 9.9, payOrderQrCodeUrl: `https://open.lkcoffee.com/transfer/qrcode?token=t${this.creates}`, payOrderUrl: `weixin://wxpay/bizpayurl?pr=p${this.creates}` };
       return { text: JSON.stringify({ code: 0, success: true, data }), isError: false };
     }
     return { text: `ok:${name}`, isError: false };
@@ -213,7 +213,43 @@ describe("lucky-agent", () => {
     // 第 2 单限流一次后重试成功：共 6 次 createOrder
     expect(up.creates_()).toHaveLength(6);
     expect(text(r)).toContain("订单号 7701");
-    expect(text(r)).toContain("付款二维码 https://pay/qr");
+    expect(text(r)).toContain("付款二维码 https://open.lkcoffee.com/transfer/qrcode?token=t");
+  });
+
+  it("paysheet: refuses before any batch", async () => {
+    const r = await client.callTool({ name: "luckin_paysheet", arguments: { format: "html" } });
+    expect(r.isError).toBe(true);
+  });
+
+  it("paysheet: collects every order of the last batch into an HTML file", async () => {
+    up.coupons = ["SY0", "SY1", "SY2"];
+    const r = await run(batch(3));
+    expect(text(r)).toContain("luckin_paysheet");
+    const sheet = await client.callTool({ name: "luckin_paysheet", arguments: { format: "html" } });
+    expect(text(sheet)).toContain("3 单，合计 ¥29.70");
+    const file = text(sheet).match(/文件：(.+\.html)/)![1];
+    expect(file.startsWith(join(dir, "paysheets"))).toBe(true);
+    const html = await readFile(file, "utf8");
+    for (const n of [1, 2, 3]) expect(html).toContain(`pr=p${n}`);
+  });
+
+  it("paysheet: markdown for a Feishu doc, including orders placed before a stop", async () => {
+    up.coupons = ["SY0", "SY1"];
+    const r = await run(batch(4));
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain("luckin_paysheet");
+    const md = text(await client.callTool({ name: "luckin_paysheet", arguments: { format: "markdown" } }));
+    expect(md).toContain("# 付款单：2 单");
+    expect(md).toContain("[在手机上直接付](weixin://wxpay/bizpayurl?pr=p2)");
+    expect(md).not.toContain("第 3 单");
+  });
+
+  it("paysheet: a new batch replaces the previous one", async () => {
+    up.coupons = ["SY0", "SY1", "SY2"];
+    await run(batch(2));
+    await run(batch(1));
+    const md = text(await client.callTool({ name: "luckin_paysheet", arguments: { format: "markdown" } }));
+    expect(md).toContain("# 付款单：1 单");
   });
 
   it("batch: network error is reported as unknown, not retried", async () => {
