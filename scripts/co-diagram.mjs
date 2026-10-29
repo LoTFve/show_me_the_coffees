@@ -171,7 +171,7 @@ const html = `<!doctype html>
 <body>
 <header>
   <h1>瑞幸点单 CO 图</h1>
-  <p class="sub">由 <code>docs/luckin-co.md</code> 自动生成：${placed.length} 个 Concept、${ops.length} 个 Operator（其中 ${edges.length} 个返回概念，画成连线；其余是值属性）。状态：候选，见原文第 5 节缺口。</p>
+  <p class="sub">由 <code>docs/luckin-co.md</code> 自动生成：${placed.length} 个 Concept、${ops.length} 个 Operator。连线是返回概念的 ${edges.length} 个算子（二元关系，多元关系和变换按第一个输入画）；属性和谓词列在概念的详情里。状态：候选，见原文第 5 节缺口。</p>
 </header>
 <div class="legend">${legend}
   <span class="key"><b>框</b> Concept　<b>连线</b> Operator（<b>实线</b> 单值，<b>虚线</b> 多值）　点概念看它的全部 Operator，再点空白处取消</span>
