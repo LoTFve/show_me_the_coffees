@@ -39228,7 +39228,101 @@ function friendly(e) {
   return new Error(`\u8FDE\u63A5\u745E\u5E78\u5B98\u65B9 MCP \u5931\u8D25\uFF1A${msg}`);
 }
 
+// src/paysheet.ts
+function payEntryOf(text, label, price, storeName) {
+  try {
+    const d = JSON.parse(text).data ?? {};
+    const orderId = String(d.orderIdStr ?? d.orderId ?? "");
+    if (!orderId || !d.needPay) return null;
+    return {
+      orderId,
+      label,
+      price: Number(d.discountPrice ?? price),
+      // 只收预期的协议和域名，避免把别的链接写进付款单
+      qrUrl: typeof d.payOrderQrCodeUrl === "string" && d.payOrderQrCodeUrl.startsWith("https://open.lkcoffee.com/") ? d.payOrderQrCodeUrl : void 0,
+      deepLink: typeof d.payOrderUrl === "string" && d.payOrderUrl.startsWith("weixin://wxpay/") ? d.payOrderUrl : void 0,
+      storeName,
+      at: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  } catch {
+    return null;
+  }
+}
+var esc2 = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+var total = (es) => es.reduce((s, e) => s + e.price, 0).toFixed(2);
+function renderHtml(entries) {
+  const cards = entries.map(
+    (e, i) => `<section class="card" id="o${i + 1}">
+  <div class="head"><span class="n">${i + 1}</span><div><b>${esc2(e.label)}</b><div class="muted">\u8BA2\u5355\u53F7 <code>${esc2(e.orderId)}</code></div></div><span class="price">\xA5${e.price.toFixed(2)}</span></div>
+  ${e.qrUrl ? `<img src="${esc2(e.qrUrl)}" width="240" height="240" alt="\u7B2C ${i + 1} \u5355\u4ED8\u6B3E\u4E8C\u7EF4\u7801" referrerpolicy="no-referrer">` : '<p class="muted">\u8FD9\u5355\u6CA1\u6709\u8FD4\u56DE\u4E8C\u7EF4\u7801</p>'}
+  ${e.deepLink ? `<a class="btn" href="${esc2(e.deepLink)}">\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8</a>` : ""}
+  <label class="done"><input type="checkbox"> \u5DF2\u4ED8</label>
+</section>`
+  ).join("\n");
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://open.lkcoffee.com; style-src 'unsafe-inline'">
+<title>\u4ED8\u6B3E\u5355 \xB7 ${entries.length} \u5355 \xB7 \xA5${total(entries)}</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fafafa; --fg:#111827; --muted:#6b7280; --card:#fff; --line:#e5e7eb; --ok:#059669; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e5e7eb; --muted:#9ca3af; --card:#1a1d24; --line:#2a2f3a; --ok:#34d399; } }
+  body { margin:0; font:15px/1.6 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:16px 16px 4px; } h1 { font-size:19px; margin:0; } .muted { color:var(--muted); font-size:13px; }
+  * { box-sizing:border-box; }
+  main { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap:14px; padding:12px 16px 32px; }
+  .card { min-width:0; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .card:has(input:checked) { opacity:.45; }
+  .head { display:flex; gap:10px; align-items:center; width:100%; min-width:0; }
+  .head > div { min-width:0; overflow-wrap:anywhere; }
+  .n { flex:none; width:28px; height:28px; border-radius:50%; background:var(--fg); color:var(--bg); display:grid; place-items:center; font-weight:700; }
+  .price { margin-left:auto; font-weight:700; font-size:17px; }
+  img { max-width:100%; height:auto; background:#fff; border-radius:8px; padding:8px; image-rendering:pixelated; }
+  .btn { display:block; width:100%; text-align:center; padding:10px; border-radius:8px; background:var(--ok); color:#fff; text-decoration:none; font-weight:600; }
+  .done { color:var(--muted); font-size:13px; } code { font-family:ui-monospace, Consolas, monospace; font-size:12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>\u4ED8\u6B3E\u5355\uFF1A${entries.length} \u5355\uFF0C\u5408\u8BA1 \xA5${total(entries)}</h1>
+  <p class="muted">\u6BCF\u5355\u8981\u5206\u522B\u4ED8\u6B3E\u3002\u7535\u8111\u4E0A\u6253\u5F00\u5C31\u7528\u624B\u673A\u5FAE\u4FE1\u9010\u4E2A\u626B\u7801\uFF1B\u624B\u673A\u4E0A\u6253\u5F00\u5C31\u70B9"\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8"\u3002\u4ED8\u5B8C\u4E00\u5355\u52FE\u4E0A"\u5DF2\u4ED8"\uFF0C\u65B9\u4FBF\u770B\u8FD8\u5269\u54EA\u51E0\u5355\u3002</p>
+</header>
+<main>
+${cards}
+</main>
+</body>
+</html>
+`;
+}
+function renderMarkdown(entries) {
+  const rows = entries.map(
+    (e, i) => [
+      `## \u7B2C ${i + 1} \u5355\uFF1A${e.label}\uFF0C\xA5${e.price.toFixed(2)}`,
+      "",
+      `\u8BA2\u5355\u53F7 \`${e.orderId}\``,
+      "",
+      e.deepLink ? `- [\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8](${e.deepLink})` : "",
+      e.qrUrl ? `- [\u6253\u5F00\u4ED8\u6B3E\u4E8C\u7EF4\u7801](${e.qrUrl})` : ""
+    ].filter((l, j, a) => l || a[j - 1]).join("\n")
+  );
+  return [
+    `# \u4ED8\u6B3E\u5355\uFF1A${entries.length} \u5355\uFF0C\u5408\u8BA1 \xA5${total(entries)}`,
+    "",
+    "\u6BCF\u5355\u8981\u5206\u522B\u4ED8\u6B3E\u3002\u5728\u624B\u673A\u98DE\u4E66\u91CC\u6253\u5F00\uFF0C\u9010\u4E2A\u70B9\u201C\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8\u201D\uFF1B\u70B9\u4E0D\u5F00\u5C31\u70B9\u201C\u6253\u5F00\u4ED8\u6B3E\u4E8C\u7EF4\u7801\u201D\uFF0C\u957F\u6309\u8BC6\u522B\u3002",
+    "",
+    "\u4ED8\u6B3E\u94FE\u63A5\u8C01\u62FF\u5230\u90FD\u80FD\u66FF\u4F60\u4ED8\u8FD9\u5355\uFF0C\u4E0D\u8981\u5206\u4EAB\u8FD9\u7BC7\u6587\u6863\u3002",
+    "",
+    ...rows
+  ].join("\n");
+}
+
 // src/server.ts
+import { mkdir as mkdir2, writeFile as writeFile2 } from "node:fs/promises";
+import { join as join3 } from "node:path";
+import { pathToFileURL } from "node:url";
 var ok = (text) => ({ content: [{ type: "text", text }] });
 var fail = (text) => ({ content: [{ type: "text", text }], isError: true });
 var json2 = (v) => ok(JSON.stringify(v, null, 2));
@@ -39236,6 +39330,7 @@ var MAX_BATCH = 20;
 var RATE_LIMIT_RETRIES = 3;
 var CLAIM_HINT = "\u8BF7\u63D0\u9192\u7528\u6237\u53BB\u745E\u5E78 App \u6216\u5FAE\u4FE1\u5C0F\u7A0B\u5E8F\u9886\u5238\uFF08\u9996\u9875\u6D3B\u52A8\u6216\u201C\u6211\u7684 \u2192 \u4F18\u60E0\u5238\u201D\uFF09\uFF0C\u9886\u5B8C\u540E\u91CD\u65B0\u9884\u89C8\uFF0C\u5269\u4E0B\u7684\u51E0\u676F\u63A5\u7740\u4E0B\u3002";
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+var PAYSHEET_HINT = "\u591A\u5355\u8981\u5206\u522B\u4ED8\u6B3E\u3002\u53EF\u4EE5\u8C03\u7528 luckin_paysheet \u628A\u4ED8\u6B3E\u5165\u53E3\u96C6\u4E2D\u8D77\u6765\uFF1Aformat=html \u751F\u6210\u672C\u673A\u7F51\u9875\uFF08\u624B\u673A\u626B\u7801\uFF09\uFF0Cformat=markdown \u751F\u6210\u53EF\u4EE5\u5BFC\u5165\u98DE\u4E66\u6587\u6863\u7684\u5185\u5BB9\uFF08\u624B\u673A\u4E0A\u70B9\u94FE\u63A5\uFF09\u3002\u5148\u95EE\u7528\u6237\u8981\u54EA\u79CD\u3002";
 var isRateLimited = (text) => /手速太快|稍后重试|频繁/.test(text);
 function payInfo(text) {
   try {
@@ -39250,16 +39345,16 @@ function payInfo(text) {
     return text;
   }
 }
-function summary(report, total, stoppedAt, paid) {
+function summary(report, total2, stoppedAt, paid) {
   const sum = `\u5408\u8BA1\u5B9E\u4ED8 \xA5${paid.toFixed(2)}\uFF0C\u8BA2\u5355\u9700\u6309\u5B98\u65B9\u8FD4\u56DE\u7684\u65B9\u5F0F\u4ED8\u6B3E\u3002`;
-  const head = stoppedAt === total ? `\u5168\u90E8 ${total} \u5355\u5DF2\u4E0B\u5355\uFF0C${sum}` : `\u5DF2\u505C\u6B62\uFF1A\u6210\u529F ${stoppedAt} \u5355\uFF0C\u7B2C ${stoppedAt + 1} \u5355\u672A\u5B8C\u6210\uFF0C\u5269\u4F59 ${total - stoppedAt - 1} \u5355\u672A\u6267\u884C\u3002${sum}`;
+  const head = stoppedAt === total2 ? `\u5168\u90E8 ${total2} \u5355\u5DF2\u4E0B\u5355\uFF0C${sum}` : `\u5DF2\u505C\u6B62\uFF1A\u6210\u529F ${stoppedAt} \u5355\uFF0C\u7B2C ${stoppedAt + 1} \u5355\u672A\u5B8C\u6210\uFF0C\u5269\u4F59 ${total2 - stoppedAt - 1} \u5355\u672A\u6267\u884C\u3002${sum}`;
   return [head, ...report].join("\n\n");
 }
 var INSTRUCTIONS = `\u745E\u5E78\u70B9\u5355\u52A9\u624B\u3002\u6D41\u7A0B\uFF1A
 1. \u5148\u8C03\u7528 lucky_profile \u8BFB\u53D6\u7528\u6237\u7684\u53E3\u5473\u504F\u597D\u3001\u5E38\u7528\u95E8\u5E97\u548C\u6536\u85CF\uFF0C\u7528\u5B83\u8865\u5168\u7528\u6237\u6CA1\u8BF4\u7684\u7EC6\u8282\uFF08\u89C4\u683C\u3001\u6E29\u5EA6\u3001\u751C\u5EA6\u3001\u95E8\u5E97\uFF09\u3002
 2. \u8C03\u7528 luckin_tools \u67E5\u770B\u745E\u5E78\u5B98\u65B9\u63D0\u4F9B\u7684\u5DE5\u5177\uFF0C\u518D\u7528 luckin_call \u8C03\u7528\uFF08\u67E5\u95E8\u5E97\u3001\u83DC\u5355\u3001\u4F18\u60E0\u3001\u7B97\u4EF7\uFF09\u3002
 3. \u4E0B\u5355/\u652F\u4ED8/\u53D6\u6D88\u7B49\u5199\u64CD\u4F5C\uFF1Aluckin_call \u7B2C\u4E00\u6B21\u53EA\u8FD4\u56DE\u9884\u89C8\u548C\u786E\u8BA4\u7801\u3002\u5FC5\u987B\u628A\u5546\u54C1\u3001\u89C4\u683C\u3001\u95E8\u5E97\u3001\u91D1\u989D\u5B8C\u6574\u544A\u8BC9\u7528\u6237\uFF0C\u7B49\u7528\u6237\u660E\u786E\u8BF4\u201C\u786E\u8BA4\u201D\u540E\uFF0C\u7528\u5B8C\u5168\u76F8\u540C\u7684\u53C2\u6570\u52A0 confirm_code \u518D\u8C03\u7528\u4E00\u6B21\u3002\u7981\u6B62\u81EA\u884C\u786E\u8BA4\u3002
-4. \u745E\u5E78\u6BCF\u5355\u53EA\u7528\u4E00\u5F20\u5238\uFF08previewOrder \u81EA\u52A8\u9009\u5238\uFF09\u3002\u591A\u676F\u65F6\u7528 luckin_batch \u62C6\u6210\u6BCF\u5355 1 \u676F\uFF0C\u5E76\u8BBE\u597D\u6BCF\u5355\u5B9E\u4ED8\u4E0A\u9650\u3002\u540C\u6837\u5148\u8FD4\u56DE\u8BA1\u5212\uFF0C\u7528\u6237\u786E\u8BA4\u540E\u518D\u5E26\u786E\u8BA4\u7801\u6267\u884C\u3002
+4. \u745E\u5E78\u6BCF\u5355\u53EA\u7528\u4E00\u5F20\u5238\uFF08previewOrder \u81EA\u52A8\u9009\u5238\uFF09\u3002\u591A\u676F\u65F6\u7528 luckin_batch \u62C6\u6210\u6BCF\u5355 1 \u676F\uFF0C\u5E76\u8BBE\u597D\u6BCF\u5355\u5B9E\u4ED8\u4E0A\u9650\u3002\u540C\u6837\u5148\u8FD4\u56DE\u8BA1\u5212\uFF0C\u7528\u6237\u786E\u8BA4\u540E\u518D\u5E26\u786E\u8BA4\u7801\u6267\u884C\u3002\u62C6\u5355\u4E0B\u5B8C\u540E\uFF0C\u7528 luckin_paysheet \u628A\u591A\u5355\u7684\u4ED8\u6B3E\u5165\u53E3\u96C6\u4E2D\u8D77\u6765\uFF0C\u5148\u95EE\u7528\u6237\u8981\u672C\u673A\u7F51\u9875\u8FD8\u662F\u98DE\u4E66\u6587\u6863\u3002
 5. \u7528\u6237\u8868\u8FBE\u65B0\u7684\u504F\u597D\uFF08\u5982\u201C\u4EE5\u540E\u90FD\u5C11\u51B0\u201D\uFF09\u65F6\u7528 lucky_remember \u8BB0\u4E0B\u6765\u3002`;
 function createServer(deps) {
   const { config: config3, store, connect } = deps;
@@ -39360,6 +39455,27 @@ function createServer(deps) {
     skuCode: external_exports.string(),
     amount: external_exports.number().int().min(1)
   });
+  let pending = [];
+  server2.registerTool(
+    "luckin_paysheet",
+    {
+      description: "\u628A\u6700\u8FD1\u4E00\u6B21 luckin_batch \u62C6\u5355\u7684\u4ED8\u6B3E\u5165\u53E3\u96C6\u4E2D\u5230\u4E00\u5904\uFF0C\u65B9\u4FBF\u8FDE\u7EED\u4ED8\u6B3E\u3002format=html\uFF1A\u5728\u672C\u673A\u751F\u6210\u7F51\u9875\uFF0C\u4E8C\u7EF4\u7801\u6392\u6210\u4E00\u5217\uFF0C\u8FD4\u56DE\u6587\u4EF6\u8DEF\u5F84\uFF0C\u624B\u673A\u5FAE\u4FE1\u9010\u4E2A\u626B\u3002format=markdown\uFF1A\u8FD4\u56DE Markdown\uFF0C\u53EF\u4EE5\u7528\u98DE\u4E66\u7684\u5BFC\u5165\u6587\u6863\u5DE5\u5177\u5EFA\u6210\u6587\u6863\uFF0C\u5728\u624B\u673A\u4E0A\u9010\u4E2A\u70B9\u94FE\u63A5\u3002\u4E0D\u4F1A\u81EA\u52A8\u53D1\u7ED9\u4EFB\u4F55\u4EBA\u3002",
+      inputSchema: { format: external_exports.enum(["html", "markdown"]).describe("html \u672C\u673A\u7F51\u9875\uFF1Bmarkdown \u7ED9\u98DE\u4E66\u6587\u6863\u7528") }
+    },
+    async ({ format }) => {
+      if (!pending.length) return fail("\u6CA1\u6709\u5F85\u4ED8\u6B3E\u7684\u62C6\u5355\u3002\u5148\u7528 luckin_batch \u4E0B\u5355\u3002");
+      const sum = pending.reduce((s, e) => s + e.price, 0).toFixed(2);
+      if (format === "markdown") return ok(renderMarkdown(pending));
+      const dir = join3(config3.dataDir, "paysheets");
+      await mkdir2(dir, { recursive: true });
+      const file2 = join3(dir, `paysheet-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}.html`);
+      await writeFile2(file2, renderHtml(pending), { encoding: "utf8", mode: 384 });
+      return ok(`\u5DF2\u751F\u6210\u4ED8\u6B3E\u5355\uFF1A${pending.length} \u5355\uFF0C\u5408\u8BA1 \xA5${sum}\u3002
+\u6587\u4EF6\uFF1A${file2}
+\u6253\u5F00\uFF1A${pathToFileURL(file2).href}
+\u7528\u6D4F\u89C8\u5668\u6253\u5F00\u540E\uFF0C\u7528\u624B\u673A\u5FAE\u4FE1\u9010\u4E2A\u626B\u7801\u4ED8\u6B3E\u3002`);
+    }
+  );
   server2.registerTool(
     "luckin_batch",
     {
@@ -39403,12 +39519,15 @@ function createServer(deps) {
       const report = [];
       const usedCoupons = /* @__PURE__ */ new Set();
       let paid = 0;
+      pending = [];
       for (const [i, o] of orders.entries()) {
         const name = `\u7B2C ${i + 1} \u5355${o.label ? `\uFF08${o.label}\uFF09` : ""}`;
         if (i > 0) await sleep(orderGapMs);
         const stop = (msg) => {
           report.push(`${name}\uFF1A${msg}`);
-          return fail(summary(report, orders.length, i, paid));
+          return fail(summary(report, orders.length, i, paid) + (pending.length ? `
+
+${PAYSHEET_HINT}` : ""));
         };
         let preview;
         try {
@@ -39445,10 +39564,14 @@ function createServer(deps) {
         if (r.isError) return stop(`\u4E0B\u5355\u5931\u8D25\uFF0C${r.text}`);
         coupons.forEach((c) => usedCoupons.add(c));
         paid += price;
+        const entry = payEntryOf(r.text, o.label ?? `\u7B2C ${i + 1} \u5355`, price);
+        if (entry) pending.push(entry);
         report.push(`${name}\uFF1A\u6210\u529F\uFF0C\u5B9E\u4ED8 \xA5${price}${coupons.length ? `\uFF0C\u5238 ${coupons.join("\u3001")}` : "\uFF0C\u672A\u7528\u5238"}
 ${payInfo(r.text)}`);
       }
-      return ok(summary(report, orders.length, orders.length, paid));
+      return ok(summary(report, orders.length, orders.length, paid) + (pending.length > 1 ? `
+
+${PAYSHEET_HINT}` : ""));
     }
   );
   server2.registerTool(

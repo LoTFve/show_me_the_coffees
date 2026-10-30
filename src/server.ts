@@ -4,6 +4,10 @@ import { TOKEN_PAGE, type Config } from "./config.js";
 import { ConfirmGate, isWriteTool } from "./guard.js";
 import { readToken, saveToken, type LocalStore } from "./store.js";
 import { isAuthError, type Upstream } from "./upstream.js";
+import { payEntryOf, renderHtml, renderMarkdown, type PayEntry } from "./paysheet.js";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
 const fail = (text: string) => ({ content: [{ type: "text" as const, text }], isError: true });
@@ -13,6 +17,8 @@ const RATE_LIMIT_RETRIES = 3;
 // 官方接口不能领券，只能提醒用户自己去领
 const CLAIM_HINT = "请提醒用户去瑞幸 App 或微信小程序领券（首页活动或“我的 → 优惠券”），领完后重新预览，剩下的几杯接着下。";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const PAYSHEET_HINT =
+  "多单要分别付款。可以调用 luckin_paysheet 把付款入口集中起来：format=html 生成本机网页（手机扫码），format=markdown 生成可以导入飞书文档的内容（手机上点链接）。先问用户要哪种。";
 /** 瑞幸限流：{"code":1000,"msg":"您手速太快啦，稍后重试吧~"} */
 const isRateLimited = (text: string) => /手速太快|稍后重试|频繁/.test(text);
 
@@ -45,7 +51,7 @@ const INSTRUCTIONS = `瑞幸点单助手。流程：
 1. 先调用 lucky_profile 读取用户的口味偏好、常用门店和收藏，用它补全用户没说的细节（规格、温度、甜度、门店）。
 2. 调用 luckin_tools 查看瑞幸官方提供的工具，再用 luckin_call 调用（查门店、菜单、优惠、算价）。
 3. 下单/支付/取消等写操作：luckin_call 第一次只返回预览和确认码。必须把商品、规格、门店、金额完整告诉用户，等用户明确说“确认”后，用完全相同的参数加 confirm_code 再调用一次。禁止自行确认。
-4. 瑞幸每单只用一张券（previewOrder 自动选券）。多杯时用 luckin_batch 拆成每单 1 杯，并设好每单实付上限。同样先返回计划，用户确认后再带确认码执行。
+4. 瑞幸每单只用一张券（previewOrder 自动选券）。多杯时用 luckin_batch 拆成每单 1 杯，并设好每单实付上限。同样先返回计划，用户确认后再带确认码执行。拆单下完后，用 luckin_paysheet 把多单的付款入口集中起来，先问用户要本机网页还是飞书文档。
 5. 用户表达新的偏好（如“以后都少冰”）时用 lucky_remember 记下来。`;
 
 export function createServer(deps: {
@@ -169,6 +175,28 @@ export function createServer(deps: {
     amount: z.number().int().min(1),
   });
 
+  // 最近一批拆单里待付款的单。只存在内存里：付款链接谁拿到都能付，不写进下单记录之外的地方
+  let pending: PayEntry[] = [];
+
+  server.registerTool(
+    "luckin_paysheet",
+    {
+      description:
+        "把最近一次 luckin_batch 拆单的付款入口集中到一处，方便连续付款。format=html：在本机生成网页，二维码排成一列，返回文件路径，手机微信逐个扫。format=markdown：返回 Markdown，可以用飞书的导入文档工具建成文档，在手机上逐个点链接。不会自动发给任何人。",
+      inputSchema: { format: z.enum(["html", "markdown"]).describe("html 本机网页；markdown 给飞书文档用") },
+    },
+    async ({ format }) => {
+      if (!pending.length) return fail("没有待付款的拆单。先用 luckin_batch 下单。");
+      const sum = pending.reduce((s, e) => s + e.price, 0).toFixed(2);
+      if (format === "markdown") return ok(renderMarkdown(pending));
+      const dir = join(config.dataDir, "paysheets");
+      await mkdir(dir, { recursive: true });
+      const file = join(dir, `paysheet-${new Date().toISOString().replace(/[:.]/g, "-")}.html`);
+      await writeFile(file, renderHtml(pending), { encoding: "utf8", mode: 0o600 });
+      return ok(`已生成付款单：${pending.length} 单，合计 ¥${sum}。\n文件：${file}\n打开：${pathToFileURL(file).href}\n用浏览器打开后，用手机微信逐个扫码付款。`);
+    },
+  );
+
   server.registerTool(
     "luckin_batch",
     {
@@ -218,12 +246,14 @@ export function createServer(deps: {
       const report: string[] = [];
       const usedCoupons = new Set<string>();
       let paid = 0;
+      // 这一批待付款的单；中途停下时已下的单也要能生成付款单
+      pending = [];
       for (const [i, o] of orders.entries()) {
         const name = `第 ${i + 1} 单${o.label ? `（${o.label}）` : ""}`;
         if (i > 0) await sleep(orderGapMs);
         const stop = (msg: string) => {
           report.push(`${name}：${msg}`);
-          return fail(summary(report, orders.length, i, paid));
+          return fail(summary(report, orders.length, i, paid) + (pending.length ? `\n\n${PAYSHEET_HINT}` : ""));
         };
 
         let preview: { discountPrice?: number; couponCodeList?: string[] };
@@ -264,9 +294,11 @@ export function createServer(deps: {
         if (r.isError) return stop(`下单失败，${r.text}`);
         coupons.forEach((c) => usedCoupons.add(c));
         paid += price;
+        const entry = payEntryOf(r.text, o.label ?? `第 ${i + 1} 单`, price);
+        if (entry) pending.push(entry);
         report.push(`${name}：成功，实付 ¥${price}${coupons.length ? `，券 ${coupons.join("、")}` : "，未用券"}\n${payInfo(r.text)}`);
       }
-      return ok(summary(report, orders.length, orders.length, paid));
+      return ok(summary(report, orders.length, orders.length, paid) + (pending.length > 1 ? `\n\n${PAYSHEET_HINT}` : ""));
     },
   );
 
