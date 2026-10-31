@@ -66,7 +66,7 @@
 - `createOrder` 返回 `payOrderQrCodeUrl`（二维码页）和 `payOrderUrl`（`weixin://`），每单单独付款，不能合并付款。
 - 没有领券、查券列表、最近订单列表的接口。查订单只能按订单号，取餐码在 `queryOrderDetailInfo` 的 `takeMealCodeInfo.code`。
 - 门店有营业时间，`workStatus` 为"打烊中"时不要下单。
-- 门店坐标是经度在前（`longitude`、`latitude`）。高德返回的 `location` 也是"经度,纬度"，坐标系是 GCJ-02，可以直接传给 `queryShopList`。不要用 GPS 原始坐标（WGS-84），国内会偏几百米。这一条是按两边坐标对得上推断的，瑞幸没有文档说明。
+- 门店坐标是经度在前（`longitude`、`latitude`）。高德返回的 `location` 也是"经度,纬度"，坐标系是 GCJ-02，可以直接传给 `queryShopList`。不要用 GPS 原始坐标（WGS-84），国内会偏几百米。瑞幸没有文档说明，2026-10-31 实测：用高德坐标查瑞幸门店，瑞幸返回的距离和两点直线距离逐家一致（0.20 / 0.56 / 1.17 km）。
 
 ## 产品原则
 
