@@ -28726,6 +28726,8 @@ function loadConfig(env = process.env) {
   return {
     upstreamUrl: env.LUCKIN_MCP_URL || DEFAULT_UPSTREAM,
     upstreamToken: env.LUCKIN_MCP_TOKEN || void 0,
+    amapKey: env.AMAP_KEY || void 0,
+    amapKeyFile: join(dataDir, "amap-key"),
     dataDir,
     tokenFile: join(dataDir, "token"),
     extraWriteTools: (env.LUCKIN_WRITE_TOOLS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
@@ -39323,6 +39325,54 @@ function renderMarkdown(entries) {
 import { mkdir as mkdir2, writeFile as writeFile2 } from "node:fs/promises";
 import { join as join3 } from "node:path";
 import { pathToFileURL } from "node:url";
+
+// src/amap.ts
+var POI_URL = "https://restapi.amap.com/v5/place/text";
+function parseLocation(s) {
+  if (typeof s !== "string") return null;
+  const [lng, lat] = s.split(",").map(Number);
+  return Number.isFinite(lng) && Number.isFinite(lat) && Math.abs(lng) <= 180 && Math.abs(lat) <= 90 ? [lng, lat] : null;
+}
+var scrub = (s, key) => key ? s.split(key).join("***") : s;
+async function searchPlace(key, keywords, opts = {}) {
+  const kw = keywords.trim();
+  if (!kw || kw.length > 80) throw new Error("\u5730\u70B9\u5173\u952E\u8BCD\u8981 1\u201380 \u4E2A\u5B57");
+  const q = new URLSearchParams({ key, keywords: kw, page_size: String(Math.min(opts.limit ?? 5, 10)) });
+  if (opts.city?.trim()) {
+    q.set("region", opts.city.trim());
+    q.set("city_limit", "true");
+  }
+  const f = opts.fetch ?? ((u) => fetch(u));
+  let body;
+  try {
+    const r = await f(`${POI_URL}?${q}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    body = await r.json();
+  } catch (e) {
+    throw new Error(scrub(`\u9AD8\u5FB7\u5730\u70B9\u641C\u7D22\u5931\u8D25\uFF1A${e.message}`, key));
+  }
+  if (body.status !== "1") {
+    const why = body.infocode === "10001" ? "Key \u65E0\u6548" : body.infocode === "10003" ? "\u4ECA\u5929\u7684\u514D\u8D39\u989D\u5EA6\u7528\u5B8C\u4E86" : body.info ?? "\u672A\u77E5\u9519\u8BEF";
+    throw new Error(scrub(`\u9AD8\u5FB7\u8FD4\u56DE\u9519\u8BEF\uFF1A${why}\uFF08${body.infocode ?? "-"}\uFF09`, key));
+  }
+  const out = [];
+  for (const p of body.pois ?? []) {
+    const loc = parseLocation(p.location);
+    if (!loc) continue;
+    out.push({
+      name: String(p.name ?? ""),
+      address: typeof p.address === "string" ? p.address : "",
+      city: String(p.cityname ?? ""),
+      district: String(p.adname ?? ""),
+      longitude: loc[0],
+      latitude: loc[1]
+    });
+  }
+  return out;
+}
+
+// src/server.ts
+var AMAP_KEY_PAGE = "https://console.amap.com/dev/key/app";
 var ok = (text) => ({ content: [{ type: "text", text }] });
 var fail = (text) => ({ content: [{ type: "text", text }], isError: true });
 var json2 = (v) => ok(JSON.stringify(v, null, 2));
@@ -39355,7 +39405,8 @@ var INSTRUCTIONS = `\u745E\u5E78\u70B9\u5355\u52A9\u624B\u3002\u6D41\u7A0B\uFF1A
 2. \u8C03\u7528 luckin_tools \u67E5\u770B\u745E\u5E78\u5B98\u65B9\u63D0\u4F9B\u7684\u5DE5\u5177\uFF0C\u518D\u7528 luckin_call \u8C03\u7528\uFF08\u67E5\u95E8\u5E97\u3001\u83DC\u5355\u3001\u4F18\u60E0\u3001\u7B97\u4EF7\uFF09\u3002
 3. \u4E0B\u5355/\u652F\u4ED8/\u53D6\u6D88\u7B49\u5199\u64CD\u4F5C\uFF1Aluckin_call \u7B2C\u4E00\u6B21\u53EA\u8FD4\u56DE\u9884\u89C8\u548C\u786E\u8BA4\u7801\u3002\u5FC5\u987B\u628A\u5546\u54C1\u3001\u89C4\u683C\u3001\u95E8\u5E97\u3001\u91D1\u989D\u5B8C\u6574\u544A\u8BC9\u7528\u6237\uFF0C\u7B49\u7528\u6237\u660E\u786E\u8BF4\u201C\u786E\u8BA4\u201D\u540E\uFF0C\u7528\u5B8C\u5168\u76F8\u540C\u7684\u53C2\u6570\u52A0 confirm_code \u518D\u8C03\u7528\u4E00\u6B21\u3002\u7981\u6B62\u81EA\u884C\u786E\u8BA4\u3002
 4. \u745E\u5E78\u6BCF\u5355\u53EA\u7528\u4E00\u5F20\u5238\uFF08previewOrder \u81EA\u52A8\u9009\u5238\uFF09\u3002\u591A\u676F\u65F6\u7528 luckin_batch \u62C6\u6210\u6BCF\u5355 1 \u676F\uFF0C\u5E76\u8BBE\u597D\u6BCF\u5355\u5B9E\u4ED8\u4E0A\u9650\u3002\u540C\u6837\u5148\u8FD4\u56DE\u8BA1\u5212\uFF0C\u7528\u6237\u786E\u8BA4\u540E\u518D\u5E26\u786E\u8BA4\u7801\u6267\u884C\u3002\u62C6\u5355\u4E0B\u5B8C\u540E\uFF0C\u7528 luckin_paysheet \u628A\u591A\u5355\u7684\u4ED8\u6B3E\u5165\u53E3\u96C6\u4E2D\u8D77\u6765\uFF0C\u5148\u95EE\u7528\u6237\u8981\u672C\u673A\u7F51\u9875\u8FD8\u662F\u98DE\u4E66\u6587\u6863\u3002
-5. \u7528\u6237\u8868\u8FBE\u65B0\u7684\u504F\u597D\uFF08\u5982\u201C\u4EE5\u540E\u90FD\u5C11\u51B0\u201D\uFF09\u65F6\u7528 lucky_remember \u8BB0\u4E0B\u6765\u3002`;
+5. \u7528\u6237\u8868\u8FBE\u65B0\u7684\u504F\u597D\uFF08\u5982\u201C\u4EE5\u540E\u90FD\u5C11\u51B0\u201D\uFF09\u65F6\u7528 lucky_remember \u8BB0\u4E0B\u6765\u3002
+6. \u7528\u6237\u95EE\u201C\u9644\u8FD1\u201D\u201C\u79BB\u6211\u6700\u8FD1\u201D\u65F6\uFF0C\u4E0D\u77E5\u9053\u7528\u6237\u5728\u54EA\u5C31\u5148\u95EE\uFF1B\u7528\u6237\u8BF4\u51FA\u5730\u6807\u540E\u7528 locate \u6362\u6210\u7ECF\u7EAC\u5EA6\uFF0C\u518D\u67E5\u95E8\u5E97\u3002\u4E0D\u8981\u628A\u5E38\u7528\u95E8\u5E97\u5F53\u6210\u7528\u6237\u7684\u4F4D\u7F6E\u3002`;
 function createServer(deps) {
   const { config: config3, store, connect } = deps;
   const gate = deps.gate ?? new ConfirmGate(config3.confirmTtlMs);
@@ -39572,6 +39623,48 @@ ${payInfo(r.text)}`);
       return ok(summary(report, orders.length, orders.length, paid) + (pending.length > 1 ? `
 
 ${PAYSHEET_HINT}` : ""));
+    }
+  );
+  const amapKey = async () => config3.amapKey ?? await readToken(config3.amapKeyFile);
+  const AMAP_SETUP_HINT = `\u8FD8\u6CA1\u6709\u9AD8\u5FB7 Key\u3002\u8BF7\u8BA9\u7528\u6237\u5230 ${AMAP_KEY_PAGE} \u6CE8\u518C\u767B\u5F55\uFF0C\u521B\u5EFA\u5E94\u7528\u5E76\u6DFB\u52A0\u4E00\u4E2A\u201CWeb\u670D\u52A1\u201D\u7C7B\u578B\u7684 Key\uFF0C\u590D\u5236\u540E\u53D1\u8FC7\u6765\uFF0C\u518D\u8C03\u7528 amap_setup \u4FDD\u5B58\u3002`;
+  server2.registerTool(
+    "amap_setup",
+    {
+      description: `\u4FDD\u5B58\u9AD8\u5FB7 Web \u670D\u52A1 Key\uFF08\u5728 ${AMAP_KEY_PAGE} \u521B\u5EFA\uFF0C\u7C7B\u578B\u9009\u201CWeb\u670D\u52A1\u201D\uFF09\u3002\u4F1A\u5148\u7528\u5B83\u8BD5\u641C\u4E00\u6B21\uFF0C\u6709\u6548\u624D\u4FDD\u5B58\u5230\u672C\u673A\u3002\u7528\u6237\u5728\u5BF9\u8BDD\u91CC\u8D34\u51FA Key \u65F6\u8C03\u7528\u3002`,
+      inputSchema: { key: external_exports.string().regex(/^[0-9a-f]{32}$/i, "\u9AD8\u5FB7 Key \u662F 32 \u4F4D\u5B57\u6BCD\u548C\u6570\u5B57").describe("\u7528\u6237\u63D0\u4F9B\u7684\u9AD8\u5FB7 Key") }
+    },
+    async ({ key }) => {
+      try {
+        await searchPlace(key, "\u5929\u5B89\u95E8", { limit: 1, fetch: deps.fetch });
+      } catch (e) {
+        return fail(`${e.message}\uFF0C\u6CA1\u6709\u4FDD\u5B58\u3002\u8BF7\u786E\u8BA4 Key \u7684\u7C7B\u578B\u662F\u201CWeb\u670D\u52A1\u201D\u3002`);
+      }
+      await saveToken(config3.dataDir, config3.amapKeyFile, key);
+      return ok(`\u9AD8\u5FB7 Key \u6709\u6548\uFF0C\u5DF2\u4FDD\u5B58\u5230\u672C\u673A\uFF08${config3.amapKeyFile}\uFF09\u3002\u4EE5\u540E\u7528\u6237\u8BF4\u5730\u6807\u5C31\u80FD\u67E5\u9644\u8FD1\u95E8\u5E97\u3002`);
+    }
+  );
+  server2.registerTool(
+    "locate",
+    {
+      description: "\u628A\u7528\u6237\u8BF4\u7684\u5730\u6807\u6216\u5730\u5740\u6362\u6210\u7ECF\u7EAC\u5EA6\uFF08\u9AD8\u5FB7\uFF0C\u548C\u745E\u5E78\u95E8\u5E97\u540C\u4E00\u5750\u6807\u7CFB\uFF09\u3002\u7528\u6237\u95EE\u201C\u9644\u8FD1\u201D\u201C\u79BB\u6211\u6700\u8FD1\u201D\u65F6\uFF0C\u5148\u95EE\u7528\u6237\u5728\u54EA\uFF0C\u7528\u6237\u8BF4\u51FA\u5730\u70B9\u540E\u518D\u8C03\u7528\uFF1B\u4E0D\u8981\u62FF\u5E38\u7528\u95E8\u5E97\u5F53\u4F5C\u7528\u6237\u7684\u4F4D\u7F6E\u3002\u8FD4\u56DE\u591A\u4E2A\u5019\u9009\u65F6\uFF0C\u628A\u5019\u9009\u5217\u7ED9\u7528\u6237\u9009\uFF0C\u4E0D\u8981\u81EA\u5DF1\u6311\u3002\u9009\u5B9A\u540E\u628A\u7ECF\u7EAC\u5EA6\u4F20\u7ED9 queryShopList\u3002\u5750\u6807\u53EA\u7528\u6765\u67E5\u95E8\u5E97\uFF0C\u4E0D\u4FDD\u5B58\u3002",
+      inputSchema: {
+        place: external_exports.string().min(1).max(80).describe("\u7528\u6237\u8BF4\u7684\u5730\u6807\u6216\u5730\u5740\uFF0C\u5982\u201C\u9AD8\u65B0\u94F6\u6CF0\u201D\u201C\u79D1\u5927\u9AD8\u65B0\u6821\u533A\u201D"),
+        city: external_exports.string().max(20).optional().describe("\u57CE\u5E02\uFF0C\u5982\u201C\u5408\u80A5\u201D\u3002\u7528\u6237\u8BF4\u4E86\u57CE\u5E02\uFF0C\u6216\u4ECE\u5E38\u7528\u95E8\u5E97\u80FD\u786E\u5B9A\u57CE\u5E02\u65F6\u4F20\uFF0C\u907F\u514D\u641C\u5230\u5916\u5730\u540C\u540D\u5730\u70B9")
+      }
+    },
+    async ({ place, city }) => {
+      const key = await amapKey();
+      if (!key) return fail(AMAP_SETUP_HINT);
+      try {
+        const places = await searchPlace(key, place, { city, limit: 5, fetch: deps.fetch });
+        if (!places.length) return fail(`\u9AD8\u5FB7\u6CA1\u627E\u5230\u201C${place}\u201D${city ? `\uFF08${city}\uFF09` : ""}\u3002\u8BF7\u8BA9\u7528\u6237\u6362\u4E2A\u8BF4\u6CD5\uFF0C\u6216\u8005\u8BF4\u5F97\u66F4\u5177\u4F53\u4E9B\uFF0C\u6BD4\u5982\u52A0\u4E0A\u57CE\u5E02\u6216\u8DEF\u540D\u3002`);
+        return json2({
+          note: places.length > 1 ? "\u6709\u591A\u4E2A\u5019\u9009\uFF0C\u8BF7\u628A\u540D\u79F0\u548C\u5730\u5740\u5217\u7ED9\u7528\u6237\u9009" : "\u53EA\u6709\u4E00\u4E2A\u5019\u9009\uFF0C\u5411\u7528\u6237\u786E\u8BA4\u4E00\u4E0B\u518D\u67E5\u95E8\u5E97",
+          places
+        });
+      } catch (e) {
+        return fail(e.message);
+      }
     }
   );
   server2.registerTool(

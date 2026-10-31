@@ -10,6 +10,9 @@ export interface Config {
   upstreamUrl: string;
   /** 环境变量里的 token；优先于本地保存的 token */
   upstreamToken?: string;
+  /** 高德 Web 服务 Key；环境变量优先，其次是 amapKeyFile */
+  amapKey?: string;
+  amapKeyFile: string;
   /** 本地数据目录：偏好、常用门店、下单记录、token */
   dataDir: string;
   /** 用户在对话里给的 token 保存在这里（权限 600） */
@@ -25,6 +28,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     upstreamUrl: env.LUCKIN_MCP_URL || DEFAULT_UPSTREAM,
     upstreamToken: env.LUCKIN_MCP_TOKEN || undefined,
+    amapKey: env.AMAP_KEY || undefined,
+    amapKeyFile: join(dataDir, "amap-key"),
     dataDir,
     tokenFile: join(dataDir, "token"),
     extraWriteTools: (env.LUCKIN_WRITE_TOOLS ?? "")
