@@ -28,6 +28,18 @@ claude plugin install lucky-agent@show-me-the-coffees
 
 助手会先验证 Token，有效才保存到本机的 `~/.lucky-agent/token`，只有你能读。Token 大约一个月过期，过期后会提示你重新发一次，不用重启。
 
+### 定位（可选）
+
+想说"我在高新银泰"这种地标来找店，需要一个高德 Key：
+
+1. 打开 <https://console.amap.com/dev/key/app>，注册登录。
+2. 创建一个应用，添加 Key，服务平台选"**Web服务**"。
+3. 把 Key 发到对话里，助手会先试搜一次，有效才保存到本机 `~/.lucky-agent/amap-key`。
+
+个人用免费额度足够。不配也能用，直接说门店名，或者用常用门店就行。
+
+助手拿不到你的实时位置：不读系统定位，也不按 IP 猜。你说了地标，它才会去查。位置只用来找门店，不会保存。
+
 ## 怎么用
 
 直接用中文说就行，不用记命令。
@@ -35,6 +47,7 @@ claude plugin install lucky-agent@show-me-the-coffees
 | 你说 | 助手会做什么 |
 | --- | --- |
 | 我在科大高新，点 5 杯生椰拿铁 | 找附近门店，查商品和价格，报价后等你确认 |
+| 我在高新银泰，附近有哪家瑞幸 | 用高德把地标换成位置，列出附近营业中的门店。第一次用要配高德 Key，见下文 |
 | 来杯拿铁，超大杯少甜 | 按你说的规格报价 |
 | 有什么美式 / 搜一下生椰 | 按关键词搜商品，列出名称、原价和券后价。只能按关键词搜，没有完整菜单 |
 | 以后都少冰 / 公司那家店记一下 | 记住偏好或常用门店，下次自动带上 |
@@ -87,6 +100,8 @@ claude plugin install lucky-agent@show-me-the-coffees
 | 工具 | 作用 |
 | --- | --- |
 | `luckin_login` | 验证并保存 Token |
+| `locate` | 把地标或地址换成经纬度（高德），用来查附近门店 |
+| `amap_setup` | 验证并保存高德 Key |
 | `luckin_tools` | 列出瑞幸官方工具，标注哪些是写操作 |
 | `luckin_call` | 调用官方工具；写操作走两步确认 |
 | `luckin_batch` | 拆单下单：每单一张券，整批确认一次，遇错即停 |
@@ -115,3 +130,4 @@ claude --plugin-dir .
 | `LUCKIN_MCP_URL` | 官方 MCP 地址，默认 `https://gwmcp.lkcoffee.com/order/user/mcp` |
 | `LUCKIN_WRITE_TOOLS` | 逗号分隔，补充需要确认的官方工具名 |
 | `LUCKY_AGENT_HOME` | 数据目录，默认 `~/.lucky-agent` |
+| `AMAP_KEY` | 高德 Web 服务 Key，优先于本机保存的 |

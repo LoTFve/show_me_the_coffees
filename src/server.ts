@@ -8,6 +8,9 @@ import { payEntryOf, renderHtml, renderMarkdown, type PayEntry } from "./payshee
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { searchPlace, type Fetch } from "./amap.js";
+
+const AMAP_KEY_PAGE = "https://console.amap.com/dev/key/app";
 
 const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
 const fail = (text: string) => ({ content: [{ type: "text" as const, text }], isError: true });
@@ -52,7 +55,8 @@ const INSTRUCTIONS = `瑞幸点单助手。流程：
 2. 调用 luckin_tools 查看瑞幸官方提供的工具，再用 luckin_call 调用（查门店、菜单、优惠、算价）。
 3. 下单/支付/取消等写操作：luckin_call 第一次只返回预览和确认码。必须把商品、规格、门店、金额完整告诉用户，等用户明确说“确认”后，用完全相同的参数加 confirm_code 再调用一次。禁止自行确认。
 4. 瑞幸每单只用一张券（previewOrder 自动选券）。多杯时用 luckin_batch 拆成每单 1 杯，并设好每单实付上限。同样先返回计划，用户确认后再带确认码执行。拆单下完后，用 luckin_paysheet 把多单的付款入口集中起来，先问用户要本机网页还是飞书文档。
-5. 用户表达新的偏好（如“以后都少冰”）时用 lucky_remember 记下来。`;
+5. 用户表达新的偏好（如“以后都少冰”）时用 lucky_remember 记下来。
+6. 用户问“附近”“离我最近”时，不知道用户在哪就先问；用户说出地标后用 locate 换成经纬度，再查门店。不要把常用门店当成用户的位置。`;
 
 export function createServer(deps: {
   config: Config;
@@ -64,6 +68,8 @@ export function createServer(deps: {
   orderGapMs?: number;
   /** 被限流后第 n 次重试前等待 n × rateLimitWaitMs */
   rateLimitWaitMs?: number;
+  /** 请求高德用的 fetch，测试时替换 */
+  fetch?: Fetch;
 }) {
   const { config, store, connect } = deps;
   const gate = deps.gate ?? new ConfirmGate(config.confirmTtlMs);
@@ -299,6 +305,54 @@ export function createServer(deps: {
         report.push(`${name}：成功，实付 ¥${price}${coupons.length ? `，券 ${coupons.join("、")}` : "，未用券"}\n${payInfo(r.text)}`);
       }
       return ok(summary(report, orders.length, orders.length, paid) + (pending.length > 1 ? `\n\n${PAYSHEET_HINT}` : ""));
+    },
+  );
+
+  // 高德 Key：环境变量优先，其次是用户在对话里通过 amap_setup 保存的
+  const amapKey = async () => config.amapKey ?? (await readToken(config.amapKeyFile));
+  const AMAP_SETUP_HINT =
+    `还没有高德 Key。请让用户到 ${AMAP_KEY_PAGE} 注册登录，创建应用并添加一个“Web服务”类型的 Key，复制后发过来，再调用 amap_setup 保存。`;
+
+  server.registerTool(
+    "amap_setup",
+    {
+      description: `保存高德 Web 服务 Key（在 ${AMAP_KEY_PAGE} 创建，类型选“Web服务”）。会先用它试搜一次，有效才保存到本机。用户在对话里贴出 Key 时调用。`,
+      inputSchema: { key: z.string().regex(/^[0-9a-f]{32}$/i, "高德 Key 是 32 位字母和数字").describe("用户提供的高德 Key") },
+    },
+    async ({ key }) => {
+      try {
+        await searchPlace(key, "天安门", { limit: 1, fetch: deps.fetch });
+      } catch (e) {
+        return fail(`${(e as Error).message}，没有保存。请确认 Key 的类型是“Web服务”。`);
+      }
+      await saveToken(config.dataDir, config.amapKeyFile, key);
+      return ok(`高德 Key 有效，已保存到本机（${config.amapKeyFile}）。以后用户说地标就能查附近门店。`);
+    },
+  );
+
+  server.registerTool(
+    "locate",
+    {
+      description:
+        "把用户说的地标或地址换成经纬度（高德，和瑞幸门店同一坐标系）。用户问“附近”“离我最近”时，先问用户在哪，用户说出地点后再调用；不要拿常用门店当作用户的位置。返回多个候选时，把候选列给用户选，不要自己挑。选定后把经纬度传给 queryShopList。坐标只用来查门店，不保存。",
+      inputSchema: {
+        place: z.string().min(1).max(80).describe("用户说的地标或地址，如“高新银泰”“科大高新校区”"),
+        city: z.string().max(20).optional().describe("城市，如“合肥”。用户说了城市，或从常用门店能确定城市时传，避免搜到外地同名地点"),
+      },
+    },
+    async ({ place, city }) => {
+      const key = await amapKey();
+      if (!key) return fail(AMAP_SETUP_HINT);
+      try {
+        const places = await searchPlace(key, place, { city, limit: 5, fetch: deps.fetch });
+        if (!places.length) return fail(`高德没找到“${place}”${city ? `（${city}）` : ""}。请让用户换个说法，或者说得更具体些，比如加上城市或路名。`);
+        return json({
+          note: places.length > 1 ? "有多个候选，请把名称和地址列给用户选" : "只有一个候选，向用户确认一下再查门店",
+          places,
+        });
+      } catch (e) {
+        return fail((e as Error).message);
+      }
     },
   );
 
