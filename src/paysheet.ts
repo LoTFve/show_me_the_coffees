@@ -37,17 +37,28 @@ export function payEntryOf(text: string, label: string, price: number, storeName
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const total = (es: PayEntry[]) => es.reduce((s, e) => s + e.price, 0).toFixed(2);
 
+/** 下单时刻，按北京时间显示 HH:MM。瑞幸不返回付款截止时间，所以只显示确定的下单时刻，不做倒计时 */
+const orderedAt = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+};
+
 /** 本机 HTML 页：只引用瑞幸的二维码图片，不加载其他外部资源 */
 export function renderHtml(entries: PayEntry[]): string {
   const cards = entries
-    .map(
-      (e, i) => `<section class="card" id="o${i + 1}">
-  <div class="head"><span class="n">${i + 1}</span><div><b>${esc(e.label)}</b><div class="muted">订单号 <code>${esc(e.orderId)}</code></div></div><span class="price">¥${e.price.toFixed(2)}</span></div>
+    .map((e, i) => {
+      const at = orderedAt(e.at);
+      return `<section class="card" id="o${i + 1}">
+  <div class="head"><span class="nth">第 ${i + 1} 单</span><span class="price">¥${e.price.toFixed(2)}</span></div>
+  <div class="label">${esc(e.label)}</div>
   ${e.qrUrl ? `<img src="${esc(e.qrUrl)}" width="240" height="240" alt="第 ${i + 1} 单付款二维码" referrerpolicy="no-referrer">` : '<p class="muted">这单没有返回二维码</p>'}
+  ${at ? `<div class="at">${at} 下单，请尽快付款</div>` : ""}
   ${e.deepLink ? `<a class="btn" href="${esc(e.deepLink)}">在手机上直接付</a>` : ""}
-  <label class="done"><input type="checkbox"> 已付</label>
-</section>`,
-    )
+  <div class="foot"><span class="muted">订单号 <code>${esc(e.orderId)}</code></span><label class="done"><input type="checkbox"> 已付</label></div>
+</section>`;
+    })
     .join("\n");
   return `<!doctype html>
 <html lang="zh-CN">
@@ -56,33 +67,53 @@ export function renderHtml(entries: PayEntry[]): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://open.lkcoffee.com; style-src 'unsafe-inline'">
-<title>付款单 · ${entries.length} 单 · ¥${total(entries)}</title>
+<title>分 ${entries.length} 单付款 · ${entries.length} 单，合计 ¥${total(entries)}</title>
 <style>
-  :root { color-scheme: light dark; --bg:#fafafa; --fg:#111827; --muted:#6b7280; --card:#fff; --line:#e5e7eb; --ok:#059669; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e5e7eb; --muted:#9ca3af; --card:#1a1d24; --line:#2a2f3a; --ok:#34d399; } }
-  body { margin:0; font:15px/1.6 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--fg); }
-  header { padding:16px 16px 4px; } h1 { font-size:19px; margin:0; } .muted { color:var(--muted); font-size:13px; }
+  :root { color-scheme: light dark; --bg:#f3f4f6; --fg:#111827; --muted:#6b7280; --card:#fff; --line:#e5e7eb; --brand:#2563eb; --ok:#07c160; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e5e7eb; --muted:#9ca3af; --card:#1a1d24; --line:#2a2f3a; --brand:#60a5fa; --ok:#07c160; } }
   * { box-sizing:border-box; }
-  main { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap:14px; padding:12px 16px 32px; }
-  .card { min-width:0; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  body { margin:0; font:15px/1.6 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--fg); }
+  .sheet { max-width:820px; margin:20px auto; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; }
+  .tag { display:inline-block; background:var(--brand); color:#fff; font-weight:700; font-size:14px; padding:3px 14px; border-radius:999px; }
+  header { display:flex; align-items:flex-end; gap:12px; margin-top:12px; }
+  h1 { font-size:20px; margin:0; }
+  .sum { margin-left:auto; font-size:34px; font-weight:800; line-height:1; white-space:nowrap; }
+  .sum small { font-size:16px; font-weight:700; margin-right:2px; }
+  .sub { color:var(--muted); margin:4px 0 16px; }
+  main { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap:16px; }
+  .card { min-width:0; border:1px solid var(--line); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; align-items:center; gap:8px; }
   .card:has(input:checked) { opacity:.45; }
-  .head { display:flex; gap:10px; align-items:center; width:100%; min-width:0; }
-  .head > div { min-width:0; overflow-wrap:anywhere; }
-  .n { flex:none; width:28px; height:28px; border-radius:50%; background:var(--fg); color:var(--bg); display:grid; place-items:center; font-weight:700; }
-  .price { margin-left:auto; font-weight:700; font-size:17px; }
-  img { max-width:100%; height:auto; background:#fff; border-radius:8px; padding:8px; image-rendering:pixelated; }
+  .head { display:flex; align-items:baseline; width:100%; }
+  .nth { color:var(--muted); }
+  .price { margin-left:auto; font-weight:800; font-size:22px; }
+  .label { width:100%; font-size:13.5px; overflow-wrap:anywhere; }
+  img { width:100%; max-width:240px; height:auto; background:#fff; border:1px solid var(--line); border-radius:10px; padding:10px; image-rendering:pixelated; }
+  .at { color:var(--brand); font-weight:600; font-size:14px; }
   .btn { display:block; width:100%; text-align:center; padding:10px; border-radius:8px; background:var(--ok); color:#fff; text-decoration:none; font-weight:600; }
-  .done { color:var(--muted); font-size:13px; } code { font-family:ui-monospace, Consolas, monospace; font-size:12.5px; }
+  .foot { display:flex; width:100%; align-items:center; gap:8px; }
+  .done { margin-left:auto; color:var(--muted); font-size:13px; white-space:nowrap; }
+  .muted { color:var(--muted); font-size:12.5px; min-width:0; overflow-wrap:anywhere; }
+  code { font-family:ui-monospace, Consolas, monospace; }
+  footer { text-align:center; margin-top:16px; }
+  footer p { margin:6px 0; } footer .muted { font-size:14px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>付款单：${entries.length} 单，合计 ¥${total(entries)}</h1>
-  <p class="muted">每单要分别付款。电脑上打开就用手机微信逐个扫码；手机上打开就点"在手机上直接付"。付完一单勾上"已付"，方便看还剩哪几单。</p>
-</header>
-<main>
+<div class="sheet">
+  <span class="tag">瑞幸咖啡</span>
+  <header>
+    <h1>分 ${entries.length} 单付款</h1>
+    <div class="sum"><small>¥</small>${total(entries)}</div>
+  </header>
+  <p class="sub">每单一个码，各自扫一次</p>
+  <main>
 ${cards}
-</main>
+  </main>
+  <footer>
+    <p>用 <b>微信</b> 扫码付款；在手机上打开就点"在手机上直接付"</p>
+    <p class="muted">付款即确认，未付款会自动取消。付完一单勾上"已付"，方便看还剩哪几单。</p>
+  </footer>
+</div>
 </body>
 </html>
 `;

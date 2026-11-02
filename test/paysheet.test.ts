@@ -58,6 +58,24 @@ describe("renderHtml", () => {
     expect(html).not.toMatch(/<script/i);
   });
 
+  it("follows the design: split-order header, per-order card, WeChat, no made-up countdown", () => {
+    const html = renderHtml(entries);
+    expect(html).toContain("分 3 单付款");
+    expect(html).toContain("每单一个码，各自扫一次");
+    expect(html).toContain("第 3 单");
+    expect(html).toContain("付款即确认，未付款会自动取消");
+    // 码是微信付款码：只提微信，不提支付宝或瑞幸 App
+    expect(html).toContain("用 <b>微信</b> 扫码付款");
+    expect(html).not.toMatch(/支付宝|瑞幸 App/);
+    // 瑞幸不返回付款截止时间，不显示“剩 mm:ss”这类倒计时
+    expect(html).not.toMatch(/剩\s*\d/);
+  });
+
+  it("shows the order time in Beijing time", () => {
+    const e = { ...entries[0], at: "2026-11-02T09:56:30.000Z" };
+    expect(renderHtml([e])).toContain("17:56 下单，请尽快付款");
+  });
+
   it("escapes labels", () => {
     const html = renderHtml([payEntryOf(order(1), "<img src=x onerror=alert(1)>", 9.9)!]);
     expect(html).not.toContain("<img src=x");

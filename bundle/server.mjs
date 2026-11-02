@@ -39252,15 +39252,22 @@ function payEntryOf(text, label, price, storeName) {
 }
 var esc2 = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var total = (es) => es.reduce((s, e) => s + e.price, 0).toFixed(2);
+var orderedAt = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+};
 function renderHtml(entries) {
-  const cards = entries.map(
-    (e, i) => `<section class="card" id="o${i + 1}">
-  <div class="head"><span class="n">${i + 1}</span><div><b>${esc2(e.label)}</b><div class="muted">\u8BA2\u5355\u53F7 <code>${esc2(e.orderId)}</code></div></div><span class="price">\xA5${e.price.toFixed(2)}</span></div>
+  const cards = entries.map((e, i) => {
+    const at = orderedAt(e.at);
+    return `<section class="card" id="o${i + 1}">
+  <div class="head"><span class="nth">\u7B2C ${i + 1} \u5355</span><span class="price">\xA5${e.price.toFixed(2)}</span></div>
+  <div class="label">${esc2(e.label)}</div>
   ${e.qrUrl ? `<img src="${esc2(e.qrUrl)}" width="240" height="240" alt="\u7B2C ${i + 1} \u5355\u4ED8\u6B3E\u4E8C\u7EF4\u7801" referrerpolicy="no-referrer">` : '<p class="muted">\u8FD9\u5355\u6CA1\u6709\u8FD4\u56DE\u4E8C\u7EF4\u7801</p>'}
+  ${at ? `<div class="at">${at} \u4E0B\u5355\uFF0C\u8BF7\u5C3D\u5FEB\u4ED8\u6B3E</div>` : ""}
   ${e.deepLink ? `<a class="btn" href="${esc2(e.deepLink)}">\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8</a>` : ""}
-  <label class="done"><input type="checkbox"> \u5DF2\u4ED8</label>
-</section>`
-  ).join("\n");
+  <div class="foot"><span class="muted">\u8BA2\u5355\u53F7 <code>${esc2(e.orderId)}</code></span><label class="done"><input type="checkbox"> \u5DF2\u4ED8</label></div>
+</section>`;
+  }).join("\n");
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -39268,33 +39275,53 @@ function renderHtml(entries) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https://open.lkcoffee.com; style-src 'unsafe-inline'">
-<title>\u4ED8\u6B3E\u5355 \xB7 ${entries.length} \u5355 \xB7 \xA5${total(entries)}</title>
+<title>\u5206 ${entries.length} \u5355\u4ED8\u6B3E \xB7 ${entries.length} \u5355\uFF0C\u5408\u8BA1 \xA5${total(entries)}</title>
 <style>
-  :root { color-scheme: light dark; --bg:#fafafa; --fg:#111827; --muted:#6b7280; --card:#fff; --line:#e5e7eb; --ok:#059669; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e5e7eb; --muted:#9ca3af; --card:#1a1d24; --line:#2a2f3a; --ok:#34d399; } }
-  body { margin:0; font:15px/1.6 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--fg); }
-  header { padding:16px 16px 4px; } h1 { font-size:19px; margin:0; } .muted { color:var(--muted); font-size:13px; }
+  :root { color-scheme: light dark; --bg:#f3f4f6; --fg:#111827; --muted:#6b7280; --card:#fff; --line:#e5e7eb; --brand:#2563eb; --ok:#07c160; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e5e7eb; --muted:#9ca3af; --card:#1a1d24; --line:#2a2f3a; --brand:#60a5fa; --ok:#07c160; } }
   * { box-sizing:border-box; }
-  main { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap:14px; padding:12px 16px 32px; }
-  .card { min-width:0; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  body { margin:0; font:15px/1.6 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--fg); }
+  .sheet { max-width:820px; margin:20px auto; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; }
+  .tag { display:inline-block; background:var(--brand); color:#fff; font-weight:700; font-size:14px; padding:3px 14px; border-radius:999px; }
+  header { display:flex; align-items:flex-end; gap:12px; margin-top:12px; }
+  h1 { font-size:20px; margin:0; }
+  .sum { margin-left:auto; font-size:34px; font-weight:800; line-height:1; white-space:nowrap; }
+  .sum small { font-size:16px; font-weight:700; margin-right:2px; }
+  .sub { color:var(--muted); margin:4px 0 16px; }
+  main { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap:16px; }
+  .card { min-width:0; border:1px solid var(--line); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; align-items:center; gap:8px; }
   .card:has(input:checked) { opacity:.45; }
-  .head { display:flex; gap:10px; align-items:center; width:100%; min-width:0; }
-  .head > div { min-width:0; overflow-wrap:anywhere; }
-  .n { flex:none; width:28px; height:28px; border-radius:50%; background:var(--fg); color:var(--bg); display:grid; place-items:center; font-weight:700; }
-  .price { margin-left:auto; font-weight:700; font-size:17px; }
-  img { max-width:100%; height:auto; background:#fff; border-radius:8px; padding:8px; image-rendering:pixelated; }
+  .head { display:flex; align-items:baseline; width:100%; }
+  .nth { color:var(--muted); }
+  .price { margin-left:auto; font-weight:800; font-size:22px; }
+  .label { width:100%; font-size:13.5px; overflow-wrap:anywhere; }
+  img { width:100%; max-width:240px; height:auto; background:#fff; border:1px solid var(--line); border-radius:10px; padding:10px; image-rendering:pixelated; }
+  .at { color:var(--brand); font-weight:600; font-size:14px; }
   .btn { display:block; width:100%; text-align:center; padding:10px; border-radius:8px; background:var(--ok); color:#fff; text-decoration:none; font-weight:600; }
-  .done { color:var(--muted); font-size:13px; } code { font-family:ui-monospace, Consolas, monospace; font-size:12.5px; }
+  .foot { display:flex; width:100%; align-items:center; gap:8px; }
+  .done { margin-left:auto; color:var(--muted); font-size:13px; white-space:nowrap; }
+  .muted { color:var(--muted); font-size:12.5px; min-width:0; overflow-wrap:anywhere; }
+  code { font-family:ui-monospace, Consolas, monospace; }
+  footer { text-align:center; margin-top:16px; }
+  footer p { margin:6px 0; } footer .muted { font-size:14px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>\u4ED8\u6B3E\u5355\uFF1A${entries.length} \u5355\uFF0C\u5408\u8BA1 \xA5${total(entries)}</h1>
-  <p class="muted">\u6BCF\u5355\u8981\u5206\u522B\u4ED8\u6B3E\u3002\u7535\u8111\u4E0A\u6253\u5F00\u5C31\u7528\u624B\u673A\u5FAE\u4FE1\u9010\u4E2A\u626B\u7801\uFF1B\u624B\u673A\u4E0A\u6253\u5F00\u5C31\u70B9"\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8"\u3002\u4ED8\u5B8C\u4E00\u5355\u52FE\u4E0A"\u5DF2\u4ED8"\uFF0C\u65B9\u4FBF\u770B\u8FD8\u5269\u54EA\u51E0\u5355\u3002</p>
-</header>
-<main>
+<div class="sheet">
+  <span class="tag">\u745E\u5E78\u5496\u5561</span>
+  <header>
+    <h1>\u5206 ${entries.length} \u5355\u4ED8\u6B3E</h1>
+    <div class="sum"><small>\xA5</small>${total(entries)}</div>
+  </header>
+  <p class="sub">\u6BCF\u5355\u4E00\u4E2A\u7801\uFF0C\u5404\u81EA\u626B\u4E00\u6B21</p>
+  <main>
 ${cards}
-</main>
+  </main>
+  <footer>
+    <p>\u7528 <b>\u5FAE\u4FE1</b> \u626B\u7801\u4ED8\u6B3E\uFF1B\u5728\u624B\u673A\u4E0A\u6253\u5F00\u5C31\u70B9"\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8"</p>
+    <p class="muted">\u4ED8\u6B3E\u5373\u786E\u8BA4\uFF0C\u672A\u4ED8\u6B3E\u4F1A\u81EA\u52A8\u53D6\u6D88\u3002\u4ED8\u5B8C\u4E00\u5355\u52FE\u4E0A"\u5DF2\u4ED8"\uFF0C\u65B9\u4FBF\u770B\u8FD8\u5269\u54EA\u51E0\u5355\u3002</p>
+  </footer>
+</div>
 </body>
 </html>
 `;
