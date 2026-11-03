@@ -9,6 +9,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { searchPlace, type Fetch } from "./amap.js";
+import { SessionStore, type Slot } from "./session.js";
+import { envelope } from "./envelope.js";
 
 const AMAP_KEY_PAGE = "https://console.amap.com/dev/key/app";
 
@@ -70,12 +72,15 @@ export function createServer(deps: {
   rateLimitWaitMs?: number;
   /** 请求高德用的 fetch，测试时替换 */
   fetch?: Fetch;
+  /** 会话表，测试时替换（可注入确定性的 id 生成器） */
+  sessions?: SessionStore;
 }) {
   const { config, store, connect } = deps;
   const gate = deps.gate ?? new ConfirmGate(config.confirmTtlMs);
   const orderGapMs = deps.orderGapMs ?? 3000;
   const rateLimitWaitMs = deps.rateLimitWaitMs ?? 5000;
   const server = new McpServer({ name: "lucky-agent", version: "0.1.0" }, { instructions: INSTRUCTIONS });
+  const sessions = deps.sessions ?? new SessionStore();
 
   // token 来源：环境变量优先，其次是用户在对话里通过 luckin_login 保存的
   let upstream: Upstream | undefined;
@@ -108,6 +113,93 @@ export function createServer(deps: {
         const msg = (e as Error).message;
         return fail(isAuthError(msg) ? `Token 无效或已过期，没有保存。请让用户到 ${TOKEN_PAGE} 重新登录复制 Token。` : msg);
       }
+    },
+  );
+
+  // 契约骨架（spec §5）：luckin_start 起步、luckin_resolve_order 落槽位。
+  // 这两个工具只维护本地会话状态，不调用官方接口、不建外部单。
+  const slotInput = z.object({
+    value: z.unknown(),
+    source: z
+      .enum(["utterance", "session", "authorized_default", "history", "product_default"])
+      .describe("取值来源：用户原话 / 本会话 / 授权默认 / 历史 / 产品默认"),
+    evidence_span: z.string().optional().describe("用户原话里支撑这个取值的片段"),
+    certainty: z.number().min(0).max(1).optional(),
+    needs_confirmation: z.boolean().optional(),
+  });
+
+  // 建单前的必填槽位（spec §3）。品牌固定为瑞幸，这一支不问。
+  const REQUIRED_SLOTS = ["fulfillment", "store", "items"] as const;
+
+  const envText = (env: ReturnType<typeof envelope>) => json(env);
+
+  server.registerTool(
+    "luckin_start",
+    {
+      description:
+        "开始一次点单会话，或在用户改需求时重新起步。传入用户本轮原话，返回 session_id、revision 和当前状态。之后用 luckin_resolve_order 按槽位落地。",
+      inputSchema: { utterance: z.string().min(1).describe("用户本轮原话") },
+    },
+    async ({ utterance }) => {
+      const s = sessions.start(utterance);
+      return envText(
+        envelope(s, {
+          missing: [...REQUIRED_SLOTS],
+          reply_must_show_user: [],
+          fallback_markdown: "开始点单。先告诉我想喝什么、送到哪里还是自取，几杯。",
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "luckin_resolve_order",
+    {
+      description:
+        "把你对用户的理解按槽位落到会话里。常见槽位：fulfillment（外送/自取）、address、store、time、count、items（饮品和规格）、budget_cents、restriction（忌口/约束）。authorization 传入用户授予的授权范围。会更新 revision；传 expected_revision 做并发校验。返回 resolved/ambiguous/missing 和当前 state。不调用官方接口、不建单。",
+      inputSchema: {
+        session_id: z.string(),
+        expected_revision: z.number().int().optional().describe("并发校验：与当前 revision 不符则拒绝，返回 REVISION_CONFLICT"),
+        slots: z.record(z.string(), slotInput).default({}).describe("按槽位名传入的理解"),
+        authorization: z
+          .object({
+            select_items: z.boolean().optional(),
+            auto_substitute: z.boolean().optional(),
+            allow_split: z.boolean().optional(),
+            prepare_unpaid_order: z.boolean().optional(),
+            max_total_cents: z.number().int().positive().optional(),
+          })
+          .optional()
+          .describe("用户授予的授权范围；pay 不开放，永远由本人付款"),
+      },
+    },
+    async ({ session_id, expected_revision, slots, authorization }) => {
+      const result = sessions.revise(session_id, expected_revision, (s) => {
+        for (const [key, raw] of Object.entries(slots)) {
+          s.slots[key] = raw as Slot;
+        }
+        if (authorization) {
+          const a = s.authorization;
+          for (const [k, v] of Object.entries(authorization)) {
+            if (v !== undefined) (a as unknown as Record<string, unknown>)[k] = v;
+          }
+        }
+        const missing = REQUIRED_SLOTS.filter((k) => s.slots[k] === undefined);
+        s.state = missing.length ? "collecting" : "items_ready";
+      });
+      if ("error" in result) {
+        return fail(JSON.stringify({ error: result.error, detail: result.detail, current_revision: result.current }));
+      }
+      const s = result.session;
+      const missing = REQUIRED_SLOTS.filter((k) => s.slots[k] === undefined);
+      return envText(
+        envelope(s, {
+          slots: s.slots,
+          missing,
+          authorization: s.authorization,
+          reply_must_show_user: [],
+        }),
+      );
     },
   );
 
