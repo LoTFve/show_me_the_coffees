@@ -3872,7 +3872,7 @@ var require_fast_uri = __commonJS({
         normalizeString(uri, options);
       } else if (typeof uri === "object") {
         uri = /** @type {T} */
-        parse3(serialize(uri, options), options);
+        parse4(serialize(uri, options), options);
       }
       return uri;
     }
@@ -3915,8 +3915,8 @@ var require_fast_uri = __commonJS({
     function resolveComponent(base, relative, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
-        base = parse3(serialize(base, options), options);
-        relative = parse3(serialize(relative, options), options);
+        base = parse4(serialize(base, options), options);
+        relative = parse4(serialize(relative, options), options);
       }
       options = options || {};
       if (!options.tolerant && relative.scheme) {
@@ -4234,7 +4234,7 @@ var require_fast_uri = __commonJS({
       }
       return { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme };
     }
-    function parse3(uri, opts) {
+    function parse4(uri, opts) {
       return parseWithStatus(uri, opts).parsed;
     }
     function normalizeString(uri, opts) {
@@ -4271,7 +4271,7 @@ var require_fast_uri = __commonJS({
       resolveComponent,
       equal,
       serialize,
-      parse: parse3
+      parse: parse4
     };
     module.exports = fastUri;
     module.exports.default = fastUri;
@@ -7267,7 +7267,7 @@ var require_content_type = __commonJS({
     var QUOTE_REGEXP = /([\\"])/g;
     var TYPE_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
     exports.format = format;
-    exports.parse = parse3;
+    exports.parse = parse4;
     function format(obj) {
       if (!obj || typeof obj !== "object") {
         throw new TypeError("argument obj is required");
@@ -7291,7 +7291,7 @@ var require_content_type = __commonJS({
       }
       return string4;
     }
-    function parse3(string4) {
+    function parse4(string4) {
       if (!string4) {
         throw new TypeError("argument string is required");
       }
@@ -9221,18 +9221,18 @@ var validateAsync = async (schema, value, _ctx) => {
   return result.issues.length === 0;
 };
 var _encode = (_Err) => {
-  const parse3 = _parse(_Err);
+  const parse4 = _parse(_Err);
   const fn = (schema, value, _ctx, _params) => {
     const ctx = _ctx ? { ..._ctx, direction: "backward" } : { direction: "backward" };
-    return parse3(schema, value, ctx, finalizeParams(fn, _params));
+    return parse4(schema, value, ctx, finalizeParams(fn, _params));
   };
   return fn;
 };
 var encode = /* @__PURE__ */ _encode($ZodRealError);
 var _decode = (_Err) => {
-  const parse3 = _parse(_Err);
+  const parse4 = _parse(_Err);
   const fn = (schema, value, _ctx, _params) => {
-    return parse3(schema, value, _ctx, finalizeParams(fn, _params));
+    return parse4(schema, value, _ctx, finalizeParams(fn, _params));
   };
   return fn;
 };
@@ -10727,7 +10727,7 @@ function capSize(inst, size) {
   if (!caps.length)
     return;
   const cap = Math.min(...caps.map((c) => c[0]));
-  const parse3 = inst._zod.parse;
+  const parse4 = inst._zod.parse;
   inst._zod.parse = (payload, ctx) => {
     const n = size(payload.value);
     if (n > cap && !ctx?.skipChecks && ctx?.direction !== "backward") {
@@ -10741,7 +10741,7 @@ function capSize(inst, size) {
         }
       }
     }
-    return parse3(payload, ctx);
+    return parse4(payload, ctx);
   };
 }
 var arraySize = (input2) => Array.isArray(input2) ? input2.length : -1;
@@ -27173,15 +27173,15 @@ var JSONRPCResultResponseSchema = object({
 }).strict();
 var isJSONRPCResultResponse = (value) => JSONRPCResultResponseSchema.safeParse(value).success;
 var ErrorCode;
-(function(ErrorCode2) {
-  ErrorCode2[ErrorCode2["ConnectionClosed"] = -32e3] = "ConnectionClosed";
-  ErrorCode2[ErrorCode2["RequestTimeout"] = -32001] = "RequestTimeout";
-  ErrorCode2[ErrorCode2["ParseError"] = -32700] = "ParseError";
-  ErrorCode2[ErrorCode2["InvalidRequest"] = -32600] = "InvalidRequest";
-  ErrorCode2[ErrorCode2["MethodNotFound"] = -32601] = "MethodNotFound";
-  ErrorCode2[ErrorCode2["InvalidParams"] = -32602] = "InvalidParams";
-  ErrorCode2[ErrorCode2["InternalError"] = -32603] = "InternalError";
-  ErrorCode2[ErrorCode2["UrlElicitationRequired"] = -32042] = "UrlElicitationRequired";
+(function(ErrorCode3) {
+  ErrorCode3[ErrorCode3["ConnectionClosed"] = -32e3] = "ConnectionClosed";
+  ErrorCode3[ErrorCode3["RequestTimeout"] = -32001] = "RequestTimeout";
+  ErrorCode3[ErrorCode3["ParseError"] = -32700] = "ParseError";
+  ErrorCode3[ErrorCode3["InvalidRequest"] = -32600] = "InvalidRequest";
+  ErrorCode3[ErrorCode3["MethodNotFound"] = -32601] = "MethodNotFound";
+  ErrorCode3[ErrorCode3["InvalidParams"] = -32602] = "InvalidParams";
+  ErrorCode3[ErrorCode3["InternalError"] = -32603] = "InternalError";
+  ErrorCode3[ErrorCode3["UrlElicitationRequired"] = -32042] = "UrlElicitationRequired";
 })(ErrorCode || (ErrorCode = {}));
 var JSONRPCErrorResponseSchema = object({
   jsonrpc: literal(JSONRPC_VERSION),
@@ -37661,8 +37661,8 @@ async function random(size) {
   const evenDistCutoff = Math.pow(2, 8) - Math.pow(2, 8) % mask.length;
   let result = "";
   while (result.length < size) {
-    const randomBytes2 = await getRandomValues(size - result.length);
-    for (const randomByte of randomBytes2) {
+    const randomBytes3 = await getRandomValues(size - result.length);
+    for (const randomByte of randomBytes3) {
       if (randomByte < evenDistCutoff) {
         result += mask[randomByte % mask.length];
       }
@@ -39398,6 +39398,125 @@ async function searchPlace(key, keywords, opts = {}) {
   return out;
 }
 
+// src/session.ts
+import { randomBytes as randomBytes2 } from "node:crypto";
+var ErrorCode2 = {
+  REVISION_CONFLICT: "REVISION_CONFLICT",
+  SESSION_NOT_FOUND: "SESSION_NOT_FOUND",
+  CONSTRAINT_UNSAT: "CONSTRAINT_UNSAT"
+};
+function defaultAuthorization() {
+  return { select_items: false, auto_substitute: false, allow_split: false, prepare_unpaid_order: false };
+}
+var SessionStore = class {
+  constructor(id = () => "s" + randomBytes2(4).toString("hex")) {
+    this.id = id;
+  }
+  id;
+  sessions = /* @__PURE__ */ new Map();
+  start(utterance) {
+    const s = {
+      id: this.id(),
+      revision: 1,
+      state: "collecting",
+      slots: {},
+      authorization: defaultAuthorization(),
+      utterance
+    };
+    this.sessions.set(s.id, s);
+    return s;
+  }
+  get(id) {
+    return this.sessions.get(id);
+  }
+  /**
+   * 改订单内容：校验 expected_revision，通过后执行 mutate 并把 revision +1。
+   * 返回最新 session 或错误码（spec §5.1 的 REVISION_CONFLICT / SESSION_NOT_FOUND）。
+   */
+  revise(id, expectedRevision, mutate) {
+    const s = this.sessions.get(id);
+    if (!s) return { error: ErrorCode2.SESSION_NOT_FOUND, detail: `\u627E\u4E0D\u5230\u4F1A\u8BDD ${id}\uFF0C\u8BF7\u5148\u8C03\u7528 luckin_start` };
+    if (expectedRevision !== void 0 && expectedRevision !== s.revision) {
+      return { error: ErrorCode2.REVISION_CONFLICT, detail: "\u8BA2\u5355\u5DF2\u88AB\u6539\u8FC7\uFF0C\u8BF7\u62C9\u53D6\u6700\u65B0\u7248\u672C\u540E\u91CD\u8BD5", current: s.revision };
+    }
+    mutate(s);
+    s.revision += 1;
+    return { session: s };
+  }
+};
+
+// src/envelope.ts
+function allowedActions(state) {
+  switch (state) {
+    case "collecting":
+      return ["luckin_resolve_order"];
+    case "items_ready":
+      return ["luckin_resolve_order", "luckin_find_store", "luckin_get_menu", "luckin_quote_best"];
+  }
+}
+function envelope(session, extra = {}) {
+  return {
+    state: session.state,
+    revision: session.revision,
+    session_id: session.id,
+    allowed_actions: allowedActions(session.state),
+    reply_must_show_user: [],
+    ...extra
+  };
+}
+
+// src/luckin.ts
+var parse3 = (text) => {
+  const j = JSON.parse(text);
+  if (j && j.success === false) {
+    throw new Error(`\u745E\u5E78\u8FD4\u56DE\u5931\u8D25\uFF1A${j.msg ?? "\u672A\u77E5\u9519\u8BEF"}`);
+  }
+  return j;
+};
+function parseStores(text) {
+  const d = parse3(text).data;
+  if (!Array.isArray(d)) return [];
+  return d.map((s) => ({
+    deptId: s.deptId,
+    name: s.deptName,
+    address: s.address,
+    longitude: s.longitude,
+    latitude: s.latitude,
+    workStatus: s.workStatus,
+    workTimeStart: s.workTimeStart,
+    workTimeEnd: s.workTimeEnd,
+    distance: s.distance,
+    tags: Array.isArray(s.deptTags) ? s.deptTags : []
+  }));
+}
+function parseProducts(text) {
+  const d = parse3(text).data;
+  if (!Array.isArray(d)) return [];
+  return d.map((p) => ({
+    productId: p.productId,
+    name: p.productName,
+    skuCode: p.skuCode,
+    initialPrice: p.initialPrice,
+    estimatePrice: p.estimatePrice,
+    fallback: p.fallback,
+    tags: Array.isArray(p.tags) ? p.tags : []
+  }));
+}
+function parseQuote(text) {
+  const d = parse3(text).data ?? {};
+  const payPrice = Number(d.discountPrice);
+  if (!Number.isFinite(payPrice)) throw new Error("previewOrder \u6CA1\u6709\u8FD4\u56DE\u4EF7\u683C");
+  return {
+    payPrice,
+    initialPrice: Number(d.totalInitialPrice) || 0,
+    privilege: Number(d.privilegeMoney) || 0,
+    couponCodeList: Array.isArray(d.couponCodeList) ? d.couponCodeList : [],
+    deptId: d.shopInfo?.deptId,
+    deptName: d.shopInfo?.deptName
+  };
+}
+var isOpen = (s) => s.workStatus === "\u8425\u4E1A\u4E2D";
+
 // src/server.ts
 var AMAP_KEY_PAGE = "https://console.amap.com/dev/key/app";
 var ok = (text) => ({ content: [{ type: "text", text }] });
@@ -39440,6 +39559,7 @@ function createServer(deps) {
   const orderGapMs = deps.orderGapMs ?? 3e3;
   const rateLimitWaitMs = deps.rateLimitWaitMs ?? 5e3;
   const server2 = new McpServer({ name: "lucky-agent", version: "0.1.0" }, { instructions: INSTRUCTIONS });
+  const sessions = deps.sessions ?? new SessionStore();
   let upstream;
   const resolve = async () => {
     if (upstream) return;
@@ -39467,6 +39587,78 @@ function createServer(deps) {
         const msg = e.message;
         return fail(isAuthError(msg) ? `Token \u65E0\u6548\u6216\u5DF2\u8FC7\u671F\uFF0C\u6CA1\u6709\u4FDD\u5B58\u3002\u8BF7\u8BA9\u7528\u6237\u5230 ${TOKEN_PAGE} \u91CD\u65B0\u767B\u5F55\u590D\u5236 Token\u3002` : msg);
       }
+    }
+  );
+  const slotInput = external_exports.object({
+    value: external_exports.unknown(),
+    source: external_exports.enum(["utterance", "session", "authorized_default", "history", "product_default"]).describe("\u53D6\u503C\u6765\u6E90\uFF1A\u7528\u6237\u539F\u8BDD / \u672C\u4F1A\u8BDD / \u6388\u6743\u9ED8\u8BA4 / \u5386\u53F2 / \u4EA7\u54C1\u9ED8\u8BA4"),
+    evidence_span: external_exports.string().optional().describe("\u7528\u6237\u539F\u8BDD\u91CC\u652F\u6491\u8FD9\u4E2A\u53D6\u503C\u7684\u7247\u6BB5"),
+    certainty: external_exports.number().min(0).max(1).optional(),
+    needs_confirmation: external_exports.boolean().optional()
+  });
+  const REQUIRED_SLOTS = ["fulfillment", "store", "items"];
+  const envText = (env) => json2(env);
+  server2.registerTool(
+    "luckin_start",
+    {
+      description: "\u5F00\u59CB\u4E00\u6B21\u70B9\u5355\u4F1A\u8BDD\uFF0C\u6216\u5728\u7528\u6237\u6539\u9700\u6C42\u65F6\u91CD\u65B0\u8D77\u6B65\u3002\u4F20\u5165\u7528\u6237\u672C\u8F6E\u539F\u8BDD\uFF0C\u8FD4\u56DE session_id\u3001revision \u548C\u5F53\u524D\u72B6\u6001\u3002\u4E4B\u540E\u7528 luckin_resolve_order \u6309\u69FD\u4F4D\u843D\u5730\u3002",
+      inputSchema: { utterance: external_exports.string().min(1).describe("\u7528\u6237\u672C\u8F6E\u539F\u8BDD") }
+    },
+    async ({ utterance }) => {
+      const s = sessions.start(utterance);
+      return envText(
+        envelope(s, {
+          missing: [...REQUIRED_SLOTS],
+          reply_must_show_user: [],
+          fallback_markdown: "\u5F00\u59CB\u70B9\u5355\u3002\u5148\u544A\u8BC9\u6211\u60F3\u559D\u4EC0\u4E48\u3001\u9001\u5230\u54EA\u91CC\u8FD8\u662F\u81EA\u53D6\uFF0C\u51E0\u676F\u3002"
+        })
+      );
+    }
+  );
+  server2.registerTool(
+    "luckin_resolve_order",
+    {
+      description: "\u628A\u4F60\u5BF9\u7528\u6237\u7684\u7406\u89E3\u6309\u69FD\u4F4D\u843D\u5230\u4F1A\u8BDD\u91CC\u3002\u5E38\u89C1\u69FD\u4F4D\uFF1Afulfillment\uFF08\u5916\u9001/\u81EA\u53D6\uFF09\u3001address\u3001store\u3001time\u3001count\u3001items\uFF08\u996E\u54C1\u548C\u89C4\u683C\uFF09\u3001budget_cents\u3001restriction\uFF08\u5FCC\u53E3/\u7EA6\u675F\uFF09\u3002authorization \u4F20\u5165\u7528\u6237\u6388\u4E88\u7684\u6388\u6743\u8303\u56F4\u3002\u4F1A\u66F4\u65B0 revision\uFF1B\u4F20 expected_revision \u505A\u5E76\u53D1\u6821\u9A8C\u3002\u8FD4\u56DE resolved/ambiguous/missing \u548C\u5F53\u524D state\u3002\u4E0D\u8C03\u7528\u5B98\u65B9\u63A5\u53E3\u3001\u4E0D\u5EFA\u5355\u3002",
+      inputSchema: {
+        session_id: external_exports.string(),
+        expected_revision: external_exports.number().int().optional().describe("\u5E76\u53D1\u6821\u9A8C\uFF1A\u4E0E\u5F53\u524D revision \u4E0D\u7B26\u5219\u62D2\u7EDD\uFF0C\u8FD4\u56DE REVISION_CONFLICT"),
+        slots: external_exports.record(external_exports.string(), slotInput).default({}).describe("\u6309\u69FD\u4F4D\u540D\u4F20\u5165\u7684\u7406\u89E3"),
+        authorization: external_exports.object({
+          select_items: external_exports.boolean().optional(),
+          auto_substitute: external_exports.boolean().optional(),
+          allow_split: external_exports.boolean().optional(),
+          prepare_unpaid_order: external_exports.boolean().optional(),
+          max_total_cents: external_exports.number().int().positive().optional()
+        }).optional().describe("\u7528\u6237\u6388\u4E88\u7684\u6388\u6743\u8303\u56F4\uFF1Bpay \u4E0D\u5F00\u653E\uFF0C\u6C38\u8FDC\u7531\u672C\u4EBA\u4ED8\u6B3E")
+      }
+    },
+    async ({ session_id, expected_revision, slots, authorization }) => {
+      const result = sessions.revise(session_id, expected_revision, (s2) => {
+        for (const [key, raw] of Object.entries(slots)) {
+          s2.slots[key] = raw;
+        }
+        if (authorization) {
+          const a = s2.authorization;
+          for (const [k, v] of Object.entries(authorization)) {
+            if (v !== void 0) a[k] = v;
+          }
+        }
+        const missing2 = REQUIRED_SLOTS.filter((k) => s2.slots[k] === void 0);
+        s2.state = missing2.length ? "collecting" : "items_ready";
+      });
+      if ("error" in result) {
+        return fail(JSON.stringify({ error: result.error, detail: result.detail, current_revision: result.current }));
+      }
+      const s = result.session;
+      const missing = REQUIRED_SLOTS.filter((k) => s.slots[k] === void 0);
+      return envText(
+        envelope(s, {
+          slots: s.slots,
+          missing,
+          authorization: s.authorization,
+          reply_must_show_user: []
+        })
+      );
     }
   );
   server2.registerTool(
@@ -39533,6 +39725,100 @@ function createServer(deps) {
     skuCode: external_exports.string(),
     amount: external_exports.number().int().min(1)
   });
+  server2.registerTool(
+    "luckin_find_store",
+    {
+      description: "\u6309\u7ECF\u7EAC\u5EA6\u67E5\u9644\u8FD1\u745E\u5E78\u95E8\u5E97\uFF08\u5B98\u65B9 queryShopList\uFF09\u3002\u7ECF\u7EAC\u5EA6\u7528 locate \u628A\u5730\u6807\u6362\u6765\uFF0C\u548C\u745E\u5E78\u540C\u4E00\u5750\u6807\u7CFB\u3002\u53EA\u8FD4\u56DE\u8425\u4E1A\u4E2D\u7684\u95E8\u5E97\u7ED9\u7528\u6237\u9009\uFF1B\u9009\u5B9A\u540E\u7528 luckin_resolve_order \u628A store \u69FD\u4F4D\u586B\u6210 { deptId, longitude, latitude }\u3002\u4E0D\u5EFA\u5355\u3002",
+      inputSchema: {
+        longitude: external_exports.number(),
+        latitude: external_exports.number(),
+        include_closed: external_exports.boolean().default(false).describe("\u662F\u5426\u4E5F\u8FD4\u56DE\u6253\u70CA\u7684\u95E8\u5E97\uFF0C\u9ED8\u8BA4\u53EA\u8FD4\u56DE\u8425\u4E1A\u4E2D\u7684")
+      }
+    },
+    async ({ longitude, latitude, include_closed }) => {
+      const missing = await needUpstream();
+      if (missing) return missing;
+      try {
+        const r = await upstream.callTool("queryShopList", { longitude, latitude });
+        if (r.isError) return fail(r.text);
+        const stores = parseStores(r.text).filter((s) => include_closed || isOpen(s));
+        if (!stores.length) return fail("\u9644\u8FD1\u6CA1\u6709\u8425\u4E1A\u4E2D\u7684\u745E\u5E78\u95E8\u5E97\u3002\u53EF\u4EE5\u8BA9\u7528\u6237\u6362\u4E2A\u5730\u6807\uFF0C\u6216\u7528 include_closed \u770B\u6253\u70CA\u7684\u95E8\u5E97\u3002");
+        return json2({ stores, note: "\u628A\u95E8\u5E97\u540D\u548C\u8DDD\u79BB\u5217\u7ED9\u7528\u6237\u9009\uFF1B\u9009\u5B9A\u540E\u7528 luckin_resolve_order \u586B store \u69FD\u4F4D" });
+      } catch (e) {
+        return fail(e.message);
+      }
+    }
+  );
+  server2.registerTool(
+    "luckin_get_menu",
+    {
+      description: "\u5728\u6307\u5B9A\u95E8\u5E97\u6309\u5173\u952E\u8BCD\u641C\u5546\u54C1\uFF08\u5B98\u65B9 searchProductForMcp\uFF09\u3002\u8FD4\u56DE\u5546\u54C1\u53CA\u9ED8\u8BA4 sku\u3001\u539F\u4EF7\u3001\u5238\u540E\u9884\u4F30\u4EF7\u3002fallback=true \u8868\u793A\u6CA1\u7CBE\u786E\u547D\u4E2D\u3001\u662F\u515C\u5E95\u63A8\u8350\u3002\u9009\u5B9A\u540E\u7528 luckin_resolve_order \u628A items \u69FD\u4F4D\u586B\u6210\u5B98\u65B9 productList\uFF08\u6BCF\u9879 { productId, skuCode, amount }\uFF09\u3002\u4E0D\u5EFA\u5355\u3002",
+      inputSchema: {
+        deptId: external_exports.number().int().describe("\u95E8\u5E97 ID\uFF0C\u6765\u81EA luckin_find_store"),
+        query: external_exports.string().min(1).describe("\u7528\u6237\u539F\u59CB\u67E5\u8BE2\u6587\u672C\uFF0C\u5982\u201C\u62FF\u94C1\u201D\u201C\u751F\u6930\u201D")
+      }
+    },
+    async ({ deptId, query }) => {
+      const missing = await needUpstream();
+      if (missing) return missing;
+      try {
+        const r = await upstream.callTool("searchProductForMcp", { deptId, query });
+        if (r.isError) return fail(r.text);
+        const products = parseProducts(r.text);
+        if (!products.length) return fail(`\u95E8\u5E97 ${deptId} \u6CA1\u641C\u5230\u201C${query}\u201D\u3002\u53EF\u4EE5\u8BA9\u7528\u6237\u6362\u4E2A\u8BF4\u6CD5\u3002`);
+        return json2({ products, note: "\u5238\u540E\u9884\u4F30\u4EF7\u4EC5\u4F9B\u53C2\u8003\uFF0C\u5B9E\u9645\u4EE5 luckin_quote_best \u4E3A\u51C6" });
+      } catch (e) {
+        return fail(e.message);
+      }
+    }
+  );
+  server2.registerTool(
+    "luckin_quote_best",
+    {
+      description: "\u6838\u4EF7\uFF1A\u5BF9\u4F1A\u8BDD\u91CC\u5DF2\u786E\u5B9A\u7684\u95E8\u5E97\u548C\u5546\u54C1\u8C03\u5B98\u65B9 previewOrder\uFF0C\u8FD4\u56DE\u5238\u540E\u5B9E\u4ED8\u3001\u539F\u4EF7\u3001\u4F18\u60E0\u548C\u81EA\u52A8\u9009\u4E2D\u7684\u5238\u7801\u3002\u53EA\u6838\u4EF7\u3001\u4E0D\u5EFA\u5355\u3001\u4E0D\u5360\u5238\uFF08\u5238\u5728 createOrder \u540E\u624D\u5360\u7528\uFF09\u3002\u4F1A\u8BDD\u8981\u5148\u5230 items_ready\uFF08store \u548C items \u69FD\u4F4D\u9F50\u5168\uFF09\u3002\u8FD4\u56DE\u91CC\u5E26 state\u3001revision\u3002",
+      inputSchema: {
+        session_id: external_exports.string(),
+        expected_revision: external_exports.number().int().optional().describe("\u5E76\u53D1\u6821\u9A8C\uFF1A\u4E0E\u5F53\u524D revision \u4E0D\u7B26\u8FD4\u56DE REVISION_CONFLICT")
+      }
+    },
+    async ({ session_id, expected_revision }) => {
+      const missing = await needUpstream();
+      if (missing) return missing;
+      const s = sessions.get(session_id);
+      if (!s) return fail(JSON.stringify({ error: "SESSION_NOT_FOUND", detail: `\u627E\u4E0D\u5230\u4F1A\u8BDD ${session_id}` }));
+      if (expected_revision !== void 0 && expected_revision !== s.revision) {
+        return fail(JSON.stringify({ error: "REVISION_CONFLICT", detail: "\u8BA2\u5355\u5DF2\u88AB\u6539\u8FC7", current_revision: s.revision }));
+      }
+      if (s.state !== "items_ready") {
+        const miss = ["fulfillment", "store", "items"].filter((k) => s.slots[k] === void 0);
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: `\u8FD8\u7F3A\u69FD\u4F4D\uFF1A${miss.join("\u3001")}`, missing: miss }));
+      }
+      const storeSlot = s.slots.store?.value;
+      const items = s.slots.items?.value;
+      const deptId = storeSlot?.deptId;
+      if (typeof deptId !== "number") {
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "store \u69FD\u4F4D\u7F3A deptId\uFF0C\u8BF7\u5148 luckin_find_store \u518D resolve_order" }));
+      }
+      const parsed = external_exports.array(product).min(1).safeParse(items);
+      if (!parsed.success) {
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "items \u69FD\u4F4D\u4E0D\u662F\u5408\u6CD5\u7684\u5B98\u65B9 productList\uFF08\u6BCF\u9879 { productId, skuCode, amount }\uFF09" }));
+      }
+      try {
+        const r = await upstream.callTool("previewOrder", { deptId, productList: parsed.data });
+        if (r.isError) return fail(r.text);
+        const quote = parseQuote(r.text);
+        return json2(
+          envelope(s, {
+            reply_must_show_user: ["quote"],
+            // 透传核价结果；拆单比价留到后续步骤
+            ...{ quote }
+          })
+        );
+      } catch (e) {
+        return fail(e.message);
+      }
+    }
+  );
   let pending = [];
   server2.registerTool(
     "luckin_paysheet",

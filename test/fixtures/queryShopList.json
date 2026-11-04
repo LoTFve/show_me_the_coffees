@@ -1,0 +1,48 @@
+{
+  "code": 0,
+  "msg": "success",
+  "data": [
+    {
+      "deptId": 606675,
+      "deptName": "中国科学技术大学高新校区内部店",
+      "address": "安徽省合肥市高新区长宁社区服务中心复兴路100号中国科学技术大学高新校区信智大楼读者服务部01号铺",
+      "deptTags": [
+        "常用门店"
+      ],
+      "longitude": 117.131554,
+      "latitude": 31.818673,
+      "workTimeStart": "09:00",
+      "workTimeEnd": "18:00",
+      "distance": 0.2005,
+      "number": "(No.20773)",
+      "workStatus": "营业中"
+    },
+    {
+      "deptId": 371276,
+      "deptName": "中国声谷店",
+      "address": "安徽省合肥市高新区习友路与石莲南路交口西南角中国国际智能语音产业园A区工程2#一楼大堂",
+      "deptTags": [],
+      "longitude": 117.124037,
+      "latitude": 31.820503,
+      "workTimeStart": "07:00",
+      "workTimeEnd": "20:00",
+      "distance": 0.5632,
+      "number": "(No.8428)",
+      "workStatus": "营业中"
+    },
+    {
+      "deptId": 616741,
+      "deptName": "合肥龙湖欢肆活力街区店",
+      "address": "安徽省合肥市高新区柏堰社区服务中心柏堰科技园文曲路与复兴路交口龙湖欢肆活力街区S3-1F-28号商铺",
+      "deptTags": [],
+      "longitude": 117.141365,
+      "latitude": 31.815416,
+      "workTimeStart": "07:00",
+      "workTimeEnd": "22:00",
+      "distance": 1.1729,
+      "number": "(No.26745)",
+      "workStatus": "营业中"
+    }
+  ],
+  "success": true
+}
