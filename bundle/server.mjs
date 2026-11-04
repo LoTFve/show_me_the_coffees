@@ -39451,7 +39451,7 @@ function allowedActions(state) {
     case "collecting":
       return ["luckin_resolve_order"];
     case "items_ready":
-      return ["luckin_resolve_order", "luckin_find_store", "luckin_get_menu", "luckin_quote_best"];
+      return ["luckin_resolve_order", "luckin_find_store", "luckin_get_menu", "luckin_quote_best", "luckin_prepare_checkout"];
   }
 }
 function envelope(session, extra = {}) {
@@ -39807,19 +39807,129 @@ function createServer(deps) {
         const r = await upstream.callTool("previewOrder", { deptId, productList: parsed.data });
         if (r.isError) return fail(r.text);
         const quote = parseQuote(r.text);
-        return json2(
-          envelope(s, {
-            reply_must_show_user: ["quote"],
-            // 透传核价结果；拆单比价留到后续步骤
-            ...{ quote }
-          })
-        );
+        return json2({ ...envelope(s, { reply_must_show_user: ["quote"] }), quote });
       } catch (e) {
         return fail(e.message);
       }
     }
   );
   let pending = [];
+  async function executeBatch(plan) {
+    const { deptId, longitude, latitude, orders, max_pay_each } = plan;
+    const report = [];
+    const usedCoupons = /* @__PURE__ */ new Set();
+    let paid = 0;
+    pending = [];
+    for (const [i, o] of orders.entries()) {
+      const name = `\u7B2C ${i + 1} \u5355${o.label ? `\uFF08${o.label}\uFF09` : ""}`;
+      if (i > 0) await sleep(orderGapMs);
+      const stop = (msg) => {
+        report.push(`${name}\uFF1A${msg}`);
+        return fail(summary(report, orders.length, i, paid) + (pending.length ? `
+
+${PAYSHEET_HINT}` : ""));
+      };
+      let preview;
+      try {
+        const r2 = await upstream.callTool("previewOrder", { deptId, productList: o.productList });
+        if (r2.isError) return stop(`\u9884\u89C8\u5931\u8D25\uFF0C${r2.text}`);
+        preview = JSON.parse(r2.text).data ?? {};
+      } catch (e) {
+        return stop(`\u9884\u89C8\u5931\u8D25\uFF0C${e.message}`);
+      }
+      const price = Number(preview.discountPrice);
+      const coupons = preview.couponCodeList ?? [];
+      if (!Number.isFinite(price)) return stop("\u9884\u89C8\u6CA1\u6709\u8FD4\u56DE\u4EF7\u683C\uFF0C\u672A\u4E0B\u5355");
+      if (price > max_pay_each) {
+        const hint = coupons.length ? "\u53EF\u80FD\u80FD\u7528\u7684\u5238\u5DF2\u7ECF\u7528\u5B8C" : `\u5238\u5DF2\u7528\u5B8C\u3002${CLAIM_HINT}`;
+        return stop(`\u5B9E\u4ED8 \xA5${price} \u8D85\u8FC7\u4E0A\u9650 \xA5${max_pay_each}\uFF0C${hint}\uFF0C\u672A\u4E0B\u5355`);
+      }
+      const dup = coupons.find((c) => usedCoupons.has(c));
+      if (dup) return stop(`\u5238 ${dup} \u5DF2\u7528\u5728\u524D\u9762\u67D0\u5355\uFF08\u53EF\u80FD\u8981\u5148\u4ED8\u6B3E\u624D\u4F1A\u5360\u7528\uFF09\uFF0C\u672A\u4E0B\u5355`);
+      const args = { deptId, longitude, latitude, productList: o.productList, couponCodeList: coupons };
+      if (o.remark) args.remark = o.remark;
+      let r;
+      try {
+        r = await upstream.callTool("createOrder", args);
+        for (let retry = 0; r.isError && isRateLimited(r.text) && retry < RATE_LIMIT_RETRIES; retry++) {
+          await sleep(rateLimitWaitMs * (retry + 1));
+          r = await upstream.callTool("createOrder", args);
+        }
+      } catch (e) {
+        return stop(`\u7ED3\u679C\u672A\u77E5\uFF0C${e.message}\u3002\u53EF\u80FD\u5DF2\u4E0B\u5355\uFF0C\u8BF7\u5148\u6838\u5B9E\u518D\u51B3\u5B9A\u662F\u5426\u8865\u4E0B`);
+      }
+      await store.update((d) => {
+        d.orders.push({ at: (/* @__PURE__ */ new Date()).toISOString(), tool: "createOrder", args, result: r.text.slice(0, 2e3) });
+      });
+      if (r.isError) return stop(`\u4E0B\u5355\u5931\u8D25\uFF0C${r.text}`);
+      coupons.forEach((c) => usedCoupons.add(c));
+      paid += price;
+      const entry = payEntryOf(r.text, o.label ?? `\u7B2C ${i + 1} \u5355`, price);
+      if (entry) pending.push(entry);
+      report.push(`${name}\uFF1A\u6210\u529F\uFF0C\u5B9E\u4ED8 \xA5${price}${coupons.length ? `\uFF0C\u5238 ${coupons.join("\u3001")}` : "\uFF0C\u672A\u7528\u5238"}
+${payInfo(r.text)}`);
+    }
+    return ok(summary(report, orders.length, orders.length, paid) + (pending.length > 1 ? `
+
+${PAYSHEET_HINT}` : ""));
+  }
+  server2.registerTool(
+    "luckin_prepare_checkout",
+    {
+      description: "\u5951\u7EA6\u652F\u7EBF\u552F\u4E00\u7684\u5EFA\u5355\u5165\u53E3\uFF08spec \xA75\uFF09\uFF1A\u5BF9 items_ready \u7684\u4F1A\u8BDD\u5EFA\u5F85\u4ED8\u6B3E\u5355\uFF0C\u590D\u7528\u62C6\u5355\u903B\u8F91\uFF08\u6BCF\u5355\u4E00\u5F20\u5238\uFF0C\u9650\u6D41\u9000\u907F\uFF0C\u9632\u91CD\uFF09\u3002\u6388\u6743 prepare_unpaid_order=true \u65F6\u76F4\u63A5\u5EFA\u5355\uFF08\u4ED8\u6B3E\u672C\u8EAB\u5373\u786E\u8BA4\uFF09\uFF1B\u672A\u6388\u6743\u65F6\u7B2C\u4E00\u6B21\u53EA\u8FD4\u56DE\u786E\u8BA4\u7801\uFF0C\u7528\u6237\u786E\u8BA4\u540E\u5E26 confirm_code \u518D\u8C03\u3002\u62C6\u5355\u4E0B\u5B8C\u7528 luckin_paysheet \u6C47\u603B\u4ED8\u6B3E\u5165\u53E3\u3002",
+      inputSchema: {
+        session_id: external_exports.string(),
+        expected_revision: external_exports.number().int().optional().describe("\u5E76\u53D1\u6821\u9A8C\uFF1A\u4E0E\u5F53\u524D revision \u4E0D\u7B26\u8FD4\u56DE REVISION_CONFLICT"),
+        confirm_code: external_exports.string().optional().describe("\u672A\u6388\u6743 prepare_unpaid_order \u65F6\u7684\u786E\u8BA4\u7801\uFF0C\u7528\u6237\u660E\u786E\u786E\u8BA4\u540E\u586B")
+      }
+    },
+    async ({ session_id, expected_revision, confirm_code }) => {
+      const miss = await needUpstream();
+      if (miss) return miss;
+      const s = sessions.get(session_id);
+      if (!s) return fail(JSON.stringify({ error: "SESSION_NOT_FOUND", detail: `\u627E\u4E0D\u5230\u4F1A\u8BDD ${session_id}` }));
+      if (expected_revision !== void 0 && expected_revision !== s.revision) {
+        return fail(JSON.stringify({ error: "REVISION_CONFLICT", detail: "\u8BA2\u5355\u5DF2\u88AB\u6539\u8FC7", current_revision: s.revision }));
+      }
+      if (s.state !== "items_ready") {
+        const need = ["fulfillment", "store", "items"].filter((k) => s.slots[k] === void 0);
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: `\u8FD8\u7F3A\u69FD\u4F4D\uFF1A${need.join("\u3001")}`, missing: need }));
+      }
+      const storeSlot = s.slots.store?.value;
+      const deptId = storeSlot?.deptId;
+      const longitude = storeSlot?.longitude;
+      const latitude = storeSlot?.latitude;
+      if (typeof deptId !== "number" || typeof longitude !== "number" || typeof latitude !== "number") {
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "store \u69FD\u4F4D\u9700\u542B deptId\u3001longitude\u3001latitude\uFF08\u6765\u81EA luckin_find_store\uFF09" }));
+      }
+      const parsed = external_exports.array(product).min(1).safeParse(s.slots.items?.value);
+      if (!parsed.success) {
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "items \u69FD\u4F4D\u4E0D\u662F\u5408\u6CD5\u7684\u5B98\u65B9 productList\uFF08\u6BCF\u9879 { productId, skuCode, amount }\uFF09" }));
+      }
+      const orders = parsed.data.flatMap(
+        (p) => Array.from({ length: p.amount }, () => ({ productList: [{ ...p, amount: 1 }] }))
+      );
+      const auth2 = s.authorization;
+      const maxEach = auth2.max_total_cents ? auth2.max_total_cents / 100 / orders.length : 9999;
+      const plan = { deptId, longitude, latitude, orders, max_pay_each: maxEach };
+      if (!auth2.prepare_unpaid_order) {
+        if (!confirm_code) {
+          const code = gate.issue("prepare_checkout", plan);
+          return fail(
+            JSON.stringify({
+              error: "NEEDS_CONFIRM",
+              detail: `\u5C06\u5728\u95E8\u5E97 ${deptId} \u5EFA ${orders.length} \u5355\u5F85\u4ED8\u6B3E\uFF08\u6BCF\u5355 1 \u676F\uFF09\u3002\u8BF7\u628A\u5546\u54C1\u3001\u95E8\u5E97\u3001\u9884\u4F30\u91D1\u989D\u544A\u8BC9\u7528\u6237\uFF0C\u7528\u6237\u660E\u786E\u786E\u8BA4\u540E\u5E26 confirm_code="${code}" \u518D\u8C03\u4E00\u6B21\u3002\u6216\u5728 resolve_order \u91CC\u6388\u6743 prepare_unpaid_order=true \u76F4\u63A5\u5EFA\u5355\u3002`,
+              confirm_code: code,
+              order_count: orders.length
+            })
+          );
+        }
+        const reason = gate.redeem(confirm_code, "prepare_checkout", plan);
+        if (reason) return fail(JSON.stringify({ error: "CONFIRM_INVALID", detail: reason }));
+      }
+      return executeBatch(plan);
+    }
+  );
   server2.registerTool(
     "luckin_paysheet",
     {
@@ -39880,62 +39990,7 @@ function createServer(deps) {
       }
       const reason = gate.redeem(confirm_code, "batch", plan);
       if (reason) return fail(reason);
-      const report = [];
-      const usedCoupons = /* @__PURE__ */ new Set();
-      let paid = 0;
-      pending = [];
-      for (const [i, o] of orders.entries()) {
-        const name = `\u7B2C ${i + 1} \u5355${o.label ? `\uFF08${o.label}\uFF09` : ""}`;
-        if (i > 0) await sleep(orderGapMs);
-        const stop = (msg) => {
-          report.push(`${name}\uFF1A${msg}`);
-          return fail(summary(report, orders.length, i, paid) + (pending.length ? `
-
-${PAYSHEET_HINT}` : ""));
-        };
-        let preview;
-        try {
-          const r2 = await upstream.callTool("previewOrder", { deptId, productList: o.productList });
-          if (r2.isError) return stop(`\u9884\u89C8\u5931\u8D25\uFF0C${r2.text}`);
-          preview = JSON.parse(r2.text).data ?? {};
-        } catch (e) {
-          return stop(`\u9884\u89C8\u5931\u8D25\uFF0C${e.message}`);
-        }
-        const price = Number(preview.discountPrice);
-        const coupons = preview.couponCodeList ?? [];
-        if (!Number.isFinite(price)) return stop("\u9884\u89C8\u6CA1\u6709\u8FD4\u56DE\u4EF7\u683C\uFF0C\u672A\u4E0B\u5355");
-        if (price > max_pay_each) {
-          const hint = coupons.length ? "\u53EF\u80FD\u80FD\u7528\u7684\u5238\u5DF2\u7ECF\u7528\u5B8C" : `\u5238\u5DF2\u7528\u5B8C\u3002${CLAIM_HINT}`;
-          return stop(`\u5B9E\u4ED8 \xA5${price} \u8D85\u8FC7\u4E0A\u9650 \xA5${max_pay_each}\uFF0C${hint}\uFF0C\u672A\u4E0B\u5355`);
-        }
-        const dup = coupons.find((c) => usedCoupons.has(c));
-        if (dup) return stop(`\u5238 ${dup} \u5DF2\u7528\u5728\u524D\u9762\u67D0\u5355\uFF08\u53EF\u80FD\u8981\u5148\u4ED8\u6B3E\u624D\u4F1A\u5360\u7528\uFF09\uFF0C\u672A\u4E0B\u5355`);
-        const args = { deptId, longitude, latitude, productList: o.productList, couponCodeList: coupons };
-        if (o.remark) args.remark = o.remark;
-        let r;
-        try {
-          r = await upstream.callTool("createOrder", args);
-          for (let retry = 0; r.isError && isRateLimited(r.text) && retry < RATE_LIMIT_RETRIES; retry++) {
-            await sleep(rateLimitWaitMs * (retry + 1));
-            r = await upstream.callTool("createOrder", args);
-          }
-        } catch (e) {
-          return stop(`\u7ED3\u679C\u672A\u77E5\uFF0C${e.message}\u3002\u53EF\u80FD\u5DF2\u4E0B\u5355\uFF0C\u8BF7\u5148\u6838\u5B9E\u518D\u51B3\u5B9A\u662F\u5426\u8865\u4E0B`);
-        }
-        await store.update((d) => {
-          d.orders.push({ at: (/* @__PURE__ */ new Date()).toISOString(), tool: "createOrder", args, result: r.text.slice(0, 2e3) });
-        });
-        if (r.isError) return stop(`\u4E0B\u5355\u5931\u8D25\uFF0C${r.text}`);
-        coupons.forEach((c) => usedCoupons.add(c));
-        paid += price;
-        const entry = payEntryOf(r.text, o.label ?? `\u7B2C ${i + 1} \u5355`, price);
-        if (entry) pending.push(entry);
-        report.push(`${name}\uFF1A\u6210\u529F\uFF0C\u5B9E\u4ED8 \xA5${price}${coupons.length ? `\uFF0C\u5238 ${coupons.join("\u3001")}` : "\uFF0C\u672A\u7528\u5238"}
-${payInfo(r.text)}`);
-      }
-      return ok(summary(report, orders.length, orders.length, paid) + (pending.length > 1 ? `
-
-${PAYSHEET_HINT}` : ""));
+      return executeBatch(plan);
     }
   );
   const amapKey = async () => config3.amapKey ?? await readToken(config3.amapKeyFile);

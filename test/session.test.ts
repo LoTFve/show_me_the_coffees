@@ -14,19 +14,39 @@ import type { Upstream } from "../src/upstream.js";
 import { readFileSync } from "node:fs";
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
 
-// 返回真实脱敏夹具的上游
-const fixtureUpstream: Upstream = {
+// 返回真实脱敏夹具的上游；createOrder 返回可解析成付款入口的订单
+class FixtureUpstream implements Upstream {
+  createCalls = 0;
+  previewCalls = 0;
   async listTools() {
     return [{ name: "queryShopList", inputSchema: {} }];
-  },
+  }
   async callTool(name: string) {
     if (name === "queryShopList") return { text: fixture("queryShopList"), isError: false };
     if (name === "searchProductForMcp") return { text: fixture("searchProductForMcp"), isError: false };
-    if (name === "previewOrder") return { text: fixture("previewOrder"), isError: false };
+    if (name === "previewOrder") {
+      // 真实夹具券码固定；多单拆单时每单发不同券，才不会触发重复券保护
+      this.previewCalls++;
+      const j = JSON.parse(fixture("previewOrder"));
+      j.data.couponCodeList = [`COUPON_${this.previewCalls}`];
+      return { text: JSON.stringify(j), isError: false };
+    }
+    if (name === "createOrder") {
+      this.createCalls++;
+      const n = this.createCalls;
+      const data = {
+        orderIdStr: `7701${n}`,
+        needPay: true,
+        discountPrice: 9.9,
+        payOrderQrCodeUrl: `https://open.lkcoffee.com/transfer/qrcode?token=t${n}`,
+        payOrderUrl: `weixin://wxpay/bizpayurl?pr=p${n}`,
+      };
+      return { text: JSON.stringify({ code: 0, success: true, data }), isError: false };
+    }
     return { text: `ok:${name}`, isError: false };
-  },
-};
-const stubUpstream = fixtureUpstream;
+  }
+}
+let stubUpstream = new FixtureUpstream();
 
 const text = (r: any) => r.content[0].text as string;
 const env = (r: any) => JSON.parse(text(r));
@@ -41,11 +61,14 @@ describe("session contract (spec §5)", () => {
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "lucky-sess-"));
     ids = 0;
+    stubUpstream = new FixtureUpstream();
     const config = { ...loadConfig({ LUCKIN_MCP_TOKEN: "env-token" }), dataDir: dir, confirmTtlMs: 1000 };
     const server = createServer({
       config,
       store: new LocalStore(dir),
       connect: () => stubUpstream,
+      orderGapMs: 0,
+      rateLimitWaitMs: 0,
       gate: new ConfirmGate(1000, () => 0),
       sessions: new SessionStore(() => `s${++ids}`),
     });
@@ -181,5 +204,74 @@ describe("session contract (spec §5)", () => {
     const r = await client.callTool({ name: "luckin_quote_best", arguments: { session_id: "s1" } });
     expect(r.isError).toBe(true);
     expect(JSON.parse(text(r)).error).toBe("CONSTRAINT_UNSAT");
+  });
+
+  const readyFor = async (count: number) => {
+    await start();
+    await resolve({
+      session_id: "s1",
+      slots: {
+        fulfillment: slot("自取"),
+        store: slot({ deptId: 606675, longitude: 117.131554, latitude: 31.818673 }),
+        items: slot([{ productId: 4805, skuCode: "SP3225-00147", amount: count }]),
+      },
+      authorization: { prepare_unpaid_order: true },
+    });
+  };
+
+  it("prepare_checkout builds unpaid orders directly when authorized, one cup per order", async () => {
+    await readyFor(2);
+    const r = await client.callTool({ name: "luckin_prepare_checkout", arguments: { session_id: "s1" } });
+    expect(r.isError).toBeFalsy();
+    expect(stubUpstream.createCalls).toBe(2); // 2 杯拆成 2 单
+    expect(text(r)).toMatch(/全部 2 单已下单/);
+  });
+
+  it("prepare_checkout without authorization returns a confirm code and does not build", async () => {
+    await start();
+    await resolve({
+      session_id: "s1",
+      slots: {
+        fulfillment: slot("自取"),
+        store: slot({ deptId: 606675, longitude: 117.131554, latitude: 31.818673 }),
+        items: slot([{ productId: 4805, skuCode: "SP3225-00147", amount: 1 }]),
+      },
+    });
+    const r = await client.callTool({ name: "luckin_prepare_checkout", arguments: { session_id: "s1" } });
+    expect(r.isError).toBe(true);
+    const d = JSON.parse(text(r));
+    expect(d.error).toBe("NEEDS_CONFIRM");
+    expect(d.confirm_code).toBeTruthy();
+    expect(stubUpstream.createCalls).toBe(0);
+    // 带确认码再调一次就建单
+    const r2 = await client.callTool({ name: "luckin_prepare_checkout", arguments: { session_id: "s1", confirm_code: d.confirm_code } });
+    expect(r2.isError).toBeFalsy();
+    expect(stubUpstream.createCalls).toBe(1);
+  });
+
+  it("prepare_checkout refuses before items_ready", async () => {
+    await start();
+    await resolve({ session_id: "s1", slots: { fulfillment: slot("自取") } });
+    const r = await client.callTool({ name: "luckin_prepare_checkout", arguments: { session_id: "s1" } });
+    expect(r.isError).toBe(true);
+    expect(JSON.parse(text(r)).error).toBe("CONSTRAINT_UNSAT");
+    expect(stubUpstream.createCalls).toBe(0);
+  });
+
+  it("prepare_checkout rejects a store slot missing coordinates", async () => {
+    await start();
+    await resolve({
+      session_id: "s1",
+      slots: {
+        fulfillment: slot("自取"),
+        store: slot({ deptId: 606675 }), // 缺经纬度
+        items: slot([{ productId: 4805, skuCode: "SP3225-00147", amount: 1 }]),
+      },
+      authorization: { prepare_unpaid_order: true },
+    });
+    const r = await client.callTool({ name: "luckin_prepare_checkout", arguments: { session_id: "s1" } });
+    expect(r.isError).toBe(true);
+    expect(JSON.parse(text(r)).detail).toMatch(/longitude|latitude/);
+    expect(stubUpstream.createCalls).toBe(0);
   });
 });

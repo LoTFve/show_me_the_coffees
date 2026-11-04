@@ -373,6 +373,135 @@ export function createServer(deps: {
   // 最近一批拆单里待付款的单。只存在内存里：付款链接谁拿到都能付，不写进下单记录之外的地方
   let pending: PayEntry[] = [];
 
+  type BatchOrder = { label?: string; productList: z.infer<typeof product>[]; remark?: string };
+  type BatchPlan = { deptId: number; longitude: number; latitude: number; orders: BatchOrder[]; max_pay_each: number };
+
+  /**
+   * 拆单执行：依次 previewOrder → createOrder，每单各用一张券，
+   * 实付超上限或券重复就停。限流自动退避重试，网络异常不盲目重试（可能已下单）。
+   * luckin_batch 和 luckin_prepare_checkout 共用这一段。会把本批待付款单写进 pending。
+   */
+  async function executeBatch(plan: BatchPlan) {
+    const { deptId, longitude, latitude, orders, max_pay_each } = plan;
+    const report: string[] = [];
+    const usedCoupons = new Set<string>();
+    let paid = 0;
+    pending = [];
+    for (const [i, o] of orders.entries()) {
+      const name = `第 ${i + 1} 单${o.label ? `（${o.label}）` : ""}`;
+      if (i > 0) await sleep(orderGapMs);
+      const stop = (msg: string) => {
+        report.push(`${name}：${msg}`);
+        return fail(summary(report, orders.length, i, paid) + (pending.length ? `\n\n${PAYSHEET_HINT}` : ""));
+      };
+
+      let preview: { discountPrice?: number; couponCodeList?: string[] };
+      try {
+        const r = await upstream!.callTool("previewOrder", { deptId, productList: o.productList });
+        if (r.isError) return stop(`预览失败，${r.text}`);
+        preview = JSON.parse(r.text).data ?? {};
+      } catch (e) {
+        return stop(`预览失败，${(e as Error).message}`);
+      }
+      const price = Number(preview.discountPrice);
+      const coupons = preview.couponCodeList ?? [];
+      if (!Number.isFinite(price)) return stop("预览没有返回价格，未下单");
+      if (price > max_pay_each) {
+        const hint = coupons.length ? "可能能用的券已经用完" : `券已用完。${CLAIM_HINT}`;
+        return stop(`实付 ¥${price} 超过上限 ¥${max_pay_each}，${hint}，未下单`);
+      }
+      const dup = coupons.find((c) => usedCoupons.has(c));
+      if (dup) return stop(`券 ${dup} 已用在前面某单（可能要先付款才会占用），未下单`);
+
+      const args: Record<string, unknown> = { deptId, longitude, latitude, productList: o.productList, couponCodeList: coupons };
+      if (o.remark) args.remark = o.remark;
+      let r: { text: string; isError: boolean };
+      try {
+        r = await upstream!.callTool("createOrder", args);
+        // 限流时瑞幸明确没有建单，等一会儿重试是安全的
+        for (let retry = 0; r.isError && isRateLimited(r.text) && retry < RATE_LIMIT_RETRIES; retry++) {
+          await sleep(rateLimitWaitMs * (retry + 1));
+          r = await upstream!.callTool("createOrder", args);
+        }
+      } catch (e) {
+        // 网络异常时上游可能已经下单成功，不能盲目重试
+        return stop(`结果未知，${(e as Error).message}。可能已下单，请先核实再决定是否补下`);
+      }
+      await store.update((d) => {
+        d.orders.push({ at: new Date().toISOString(), tool: "createOrder", args, result: r.text.slice(0, 2000) });
+      });
+      if (r.isError) return stop(`下单失败，${r.text}`);
+      coupons.forEach((c) => usedCoupons.add(c));
+      paid += price;
+      const entry = payEntryOf(r.text, o.label ?? `第 ${i + 1} 单`, price);
+      if (entry) pending.push(entry);
+      report.push(`${name}：成功，实付 ¥${price}${coupons.length ? `，券 ${coupons.join("、")}` : "，未用券"}\n${payInfo(r.text)}`);
+    }
+    return ok(summary(report, orders.length, orders.length, paid) + (pending.length > 1 ? `\n\n${PAYSHEET_HINT}` : ""));
+  }
+
+  server.registerTool(
+    "luckin_prepare_checkout",
+    {
+      description:
+        "契约支线唯一的建单入口（spec §5）：对 items_ready 的会话建待付款单，复用拆单逻辑（每单一张券，限流退避，防重）。授权 prepare_unpaid_order=true 时直接建单（付款本身即确认）；未授权时第一次只返回确认码，用户确认后带 confirm_code 再调。拆单下完用 luckin_paysheet 汇总付款入口。",
+      inputSchema: {
+        session_id: z.string(),
+        expected_revision: z.number().int().optional().describe("并发校验：与当前 revision 不符返回 REVISION_CONFLICT"),
+        confirm_code: z.string().optional().describe("未授权 prepare_unpaid_order 时的确认码，用户明确确认后填"),
+      },
+    },
+    async ({ session_id, expected_revision, confirm_code }) => {
+      const miss = await needUpstream();
+      if (miss) return miss;
+      const s = sessions.get(session_id);
+      if (!s) return fail(JSON.stringify({ error: "SESSION_NOT_FOUND", detail: `找不到会话 ${session_id}` }));
+      if (expected_revision !== undefined && expected_revision !== s.revision) {
+        return fail(JSON.stringify({ error: "REVISION_CONFLICT", detail: "订单已被改过", current_revision: s.revision }));
+      }
+      if (s.state !== "items_ready") {
+        const need = ["fulfillment", "store", "items"].filter((k) => s.slots[k] === undefined);
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: `还缺槽位：${need.join("、")}`, missing: need }));
+      }
+      const storeSlot = s.slots.store?.value as { deptId?: number; longitude?: number; latitude?: number } | undefined;
+      const deptId = storeSlot?.deptId;
+      const longitude = storeSlot?.longitude;
+      const latitude = storeSlot?.latitude;
+      if (typeof deptId !== "number" || typeof longitude !== "number" || typeof latitude !== "number") {
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "store 槽位需含 deptId、longitude、latitude（来自 luckin_find_store）" }));
+      }
+      const parsed = z.array(product).min(1).safeParse(s.slots.items?.value);
+      if (!parsed.success) {
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "items 槽位不是合法的官方 productList（每项 { productId, skuCode, amount }）" }));
+      }
+      // 每单 1 杯拆单（spec §5：瑞幸每单只用一张券）。授权上限换算成每单上限。
+      const orders: BatchOrder[] = parsed.data.flatMap((p) =>
+        Array.from({ length: p.amount }, () => ({ productList: [{ ...p, amount: 1 }] })),
+      );
+      const auth = s.authorization;
+      // 每单上限：有总额授权就平摊，否则用一个宽松上限（防止券用完按原价下单仍挡得住明显异常）
+      const maxEach = auth.max_total_cents ? auth.max_total_cents / 100 / orders.length : 9999;
+      const plan: BatchPlan = { deptId, longitude, latitude, orders, max_pay_each: maxEach };
+
+      if (!auth.prepare_unpaid_order) {
+        if (!confirm_code) {
+          const code = gate.issue("prepare_checkout", plan);
+          return fail(
+            JSON.stringify({
+              error: "NEEDS_CONFIRM",
+              detail: `将在门店 ${deptId} 建 ${orders.length} 单待付款（每单 1 杯）。请把商品、门店、预估金额告诉用户，用户明确确认后带 confirm_code="${code}" 再调一次。或在 resolve_order 里授权 prepare_unpaid_order=true 直接建单。`,
+              confirm_code: code,
+              order_count: orders.length,
+            }),
+          );
+        }
+        const reason = gate.redeem(confirm_code, "prepare_checkout", plan);
+        if (reason) return fail(JSON.stringify({ error: "CONFIRM_INVALID", detail: reason }));
+      }
+      return executeBatch(plan);
+    },
+  );
+
   server.registerTool(
     "luckin_paysheet",
     {
@@ -437,63 +566,7 @@ export function createServer(deps: {
       }
       const reason = gate.redeem(confirm_code, "batch", plan);
       if (reason) return fail(reason);
-
-      const report: string[] = [];
-      const usedCoupons = new Set<string>();
-      let paid = 0;
-      // 这一批待付款的单；中途停下时已下的单也要能生成付款单
-      pending = [];
-      for (const [i, o] of orders.entries()) {
-        const name = `第 ${i + 1} 单${o.label ? `（${o.label}）` : ""}`;
-        if (i > 0) await sleep(orderGapMs);
-        const stop = (msg: string) => {
-          report.push(`${name}：${msg}`);
-          return fail(summary(report, orders.length, i, paid) + (pending.length ? `\n\n${PAYSHEET_HINT}` : ""));
-        };
-
-        let preview: { discountPrice?: number; couponCodeList?: string[] };
-        try {
-          const r = await upstream!.callTool("previewOrder", { deptId, productList: o.productList });
-          if (r.isError) return stop(`预览失败，${r.text}`);
-          preview = JSON.parse(r.text).data ?? {};
-        } catch (e) {
-          return stop(`预览失败，${(e as Error).message}`);
-        }
-        const price = Number(preview.discountPrice);
-        const coupons = preview.couponCodeList ?? [];
-        if (!Number.isFinite(price)) return stop("预览没有返回价格，未下单");
-        if (price > max_pay_each) {
-          const hint = coupons.length ? "可能能用的券已经用完" : `券已用完。${CLAIM_HINT}`;
-          return stop(`实付 ¥${price} 超过上限 ¥${max_pay_each}，${hint}，未下单`);
-        }
-        const dup = coupons.find((c) => usedCoupons.has(c));
-        if (dup) return stop(`券 ${dup} 已用在前面某单（可能要先付款才会占用），未下单`);
-
-        const args: Record<string, unknown> = { deptId, longitude, latitude, productList: o.productList, couponCodeList: coupons };
-        if (o.remark) args.remark = o.remark;
-        let r: { text: string; isError: boolean };
-        try {
-          r = await upstream!.callTool("createOrder", args);
-          // 限流时瑞幸明确没有建单，等一会儿重试是安全的
-          for (let retry = 0; r.isError && isRateLimited(r.text) && retry < RATE_LIMIT_RETRIES; retry++) {
-            await sleep(rateLimitWaitMs * (retry + 1));
-            r = await upstream!.callTool("createOrder", args);
-          }
-        } catch (e) {
-          // 网络异常时上游可能已经下单成功，不能盲目重试
-          return stop(`结果未知，${(e as Error).message}。可能已下单，请先核实再决定是否补下`);
-        }
-        await store.update((d) => {
-          d.orders.push({ at: new Date().toISOString(), tool: "createOrder", args, result: r.text.slice(0, 2000) });
-        });
-        if (r.isError) return stop(`下单失败，${r.text}`);
-        coupons.forEach((c) => usedCoupons.add(c));
-        paid += price;
-        const entry = payEntryOf(r.text, o.label ?? `第 ${i + 1} 单`, price);
-        if (entry) pending.push(entry);
-        report.push(`${name}：成功，实付 ¥${price}${coupons.length ? `，券 ${coupons.join("、")}` : "，未用券"}\n${payInfo(r.text)}`);
-      }
-      return ok(summary(report, orders.length, orders.length, paid) + (pending.length > 1 ? `\n\n${PAYSHEET_HINT}` : ""));
+      return executeBatch(plan);
     },
   );
 
