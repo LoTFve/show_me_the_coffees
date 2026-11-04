@@ -1,0 +1,139 @@
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "aboutTime": 1793779260000,
+    "discountPrice": 9.9,
+    "shopInfo": {
+      "deptId": 606675,
+      "deptName": "中国科学技术大学高新校区内部店",
+      "address": "安徽省合肥市高新区长宁社区服务中心复兴路100号中国科学技术大学高新校区信智大楼读者服务部01号铺",
+      "supportSend": 1,
+      "deptTags": [],
+      "longitude": 117.131554,
+      "latitude": 31.818673,
+      "workTimeStart": "09:00",
+      "workTimeEnd": "18:00",
+      "distance": 0,
+      "number": "(No.20773)",
+      "workStatus": "营业中"
+    },
+    "productInfoList": [
+      {
+        "productId": 4805,
+        "skuCode": "SP3225-00147",
+        "name": "拿铁",
+        "amount": 1,
+        "additionDesc": "大杯/热/意式拼配/默认浓度/不另外加糖/牛奶",
+        "bigPicUrl": null,
+        "breviaryPicUrl": "https://img01.luckincoffeecdn.com/commodity-admin/2026/05/20/e65180fb38894cb3ba28962fb06c630c.png",
+        "productAttrs": [
+          {
+            "attributeId": 64,
+            "attributeName": "杯型",
+            "productSubAttrs": [
+              {
+                "attributeId": 365,
+                "attributeName": "大杯",
+                "selected": null,
+                "price": 0,
+                "canSelected": null
+              }
+            ]
+          },
+          {
+            "attributeId": 17,
+            "attributeName": "温度",
+            "productSubAttrs": [
+              {
+                "attributeId": 56,
+                "attributeName": "热",
+                "selected": null,
+                "price": 0,
+                "canSelected": null
+              }
+            ]
+          },
+          {
+            "attributeId": 50,
+            "attributeName": "咖啡豆",
+            "productSubAttrs": [
+              {
+                "attributeId": 379,
+                "attributeName": "意式拼配",
+                "selected": null,
+                "price": 0,
+                "canSelected": null
+              }
+            ]
+          },
+          {
+            "attributeId": 113,
+            "attributeName": "咖啡浓度",
+            "productSubAttrs": [
+              {
+                "attributeId": 706,
+                "attributeName": "默认浓度",
+                "selected": null,
+                "price": 0,
+                "canSelected": null
+              }
+            ]
+          },
+          {
+            "attributeId": 18,
+            "attributeName": "糖度",
+            "productSubAttrs": [
+              {
+                "attributeId": 69,
+                "attributeName": "不另外加糖",
+                "selected": null,
+                "price": 0,
+                "canSelected": null
+              }
+            ]
+          },
+          {
+            "attributeId": 102,
+            "attributeName": "奶基",
+            "productSubAttrs": [
+              {
+                "attributeId": 632,
+                "attributeName": "牛奶",
+                "selected": null,
+                "price": 0,
+                "canSelected": null
+              }
+            ]
+          }
+        ],
+        "initPrice": 15,
+        "estimatePrice": 9.9,
+        "estimateTotalPrice": 9.9,
+        "picture": null,
+        "type": null,
+        "productType": "product",
+        "cafeKuIdList": [
+          null
+        ],
+        "coffeeVoucherType": 0
+      }
+    ],
+    "couponCodeList": [
+      "COUPON_PLACEHOLDER"
+    ],
+    "orderGranularCommodityList": [
+      {
+        "commodityId": 4805,
+        "commodityCode": "SP3225",
+        "commodityName": "拿铁",
+        "payableMoney": 15,
+        "payMoney": 0
+      }
+    ],
+    "expressExpectTime": null,
+    "privilegeMoney": 5.1,
+    "totalInitialPrice": 15
+  },
+  "success": true
+}

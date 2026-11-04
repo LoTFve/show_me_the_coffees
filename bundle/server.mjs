@@ -3872,7 +3872,7 @@ var require_fast_uri = __commonJS({
         normalizeString(uri, options);
       } else if (typeof uri === "object") {
         uri = /** @type {T} */
-        parse3(serialize(uri, options), options);
+        parse4(serialize(uri, options), options);
       }
       return uri;
     }
@@ -3915,8 +3915,8 @@ var require_fast_uri = __commonJS({
     function resolveComponent(base, relative, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
-        base = parse3(serialize(base, options), options);
-        relative = parse3(serialize(relative, options), options);
+        base = parse4(serialize(base, options), options);
+        relative = parse4(serialize(relative, options), options);
       }
       options = options || {};
       if (!options.tolerant && relative.scheme) {
@@ -4234,7 +4234,7 @@ var require_fast_uri = __commonJS({
       }
       return { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme };
     }
-    function parse3(uri, opts) {
+    function parse4(uri, opts) {
       return parseWithStatus(uri, opts).parsed;
     }
     function normalizeString(uri, opts) {
@@ -4271,7 +4271,7 @@ var require_fast_uri = __commonJS({
       resolveComponent,
       equal,
       serialize,
-      parse: parse3
+      parse: parse4
     };
     module.exports = fastUri;
     module.exports.default = fastUri;
@@ -7267,7 +7267,7 @@ var require_content_type = __commonJS({
     var QUOTE_REGEXP = /([\\"])/g;
     var TYPE_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
     exports.format = format;
-    exports.parse = parse3;
+    exports.parse = parse4;
     function format(obj) {
       if (!obj || typeof obj !== "object") {
         throw new TypeError("argument obj is required");
@@ -7291,7 +7291,7 @@ var require_content_type = __commonJS({
       }
       return string4;
     }
-    function parse3(string4) {
+    function parse4(string4) {
       if (!string4) {
         throw new TypeError("argument string is required");
       }
@@ -9221,18 +9221,18 @@ var validateAsync = async (schema, value, _ctx) => {
   return result.issues.length === 0;
 };
 var _encode = (_Err) => {
-  const parse3 = _parse(_Err);
+  const parse4 = _parse(_Err);
   const fn = (schema, value, _ctx, _params) => {
     const ctx = _ctx ? { ..._ctx, direction: "backward" } : { direction: "backward" };
-    return parse3(schema, value, ctx, finalizeParams(fn, _params));
+    return parse4(schema, value, ctx, finalizeParams(fn, _params));
   };
   return fn;
 };
 var encode = /* @__PURE__ */ _encode($ZodRealError);
 var _decode = (_Err) => {
-  const parse3 = _parse(_Err);
+  const parse4 = _parse(_Err);
   const fn = (schema, value, _ctx, _params) => {
-    return parse3(schema, value, _ctx, finalizeParams(fn, _params));
+    return parse4(schema, value, _ctx, finalizeParams(fn, _params));
   };
   return fn;
 };
@@ -10727,7 +10727,7 @@ function capSize(inst, size) {
   if (!caps.length)
     return;
   const cap = Math.min(...caps.map((c) => c[0]));
-  const parse3 = inst._zod.parse;
+  const parse4 = inst._zod.parse;
   inst._zod.parse = (payload, ctx) => {
     const n = size(payload.value);
     if (n > cap && !ctx?.skipChecks && ctx?.direction !== "backward") {
@@ -10741,7 +10741,7 @@ function capSize(inst, size) {
         }
       }
     }
-    return parse3(payload, ctx);
+    return parse4(payload, ctx);
   };
 }
 var arraySize = (input2) => Array.isArray(input2) ? input2.length : -1;
@@ -39465,6 +39465,58 @@ function envelope(session, extra = {}) {
   };
 }
 
+// src/luckin.ts
+var parse3 = (text) => {
+  const j = JSON.parse(text);
+  if (j && j.success === false) {
+    throw new Error(`\u745E\u5E78\u8FD4\u56DE\u5931\u8D25\uFF1A${j.msg ?? "\u672A\u77E5\u9519\u8BEF"}`);
+  }
+  return j;
+};
+function parseStores(text) {
+  const d = parse3(text).data;
+  if (!Array.isArray(d)) return [];
+  return d.map((s) => ({
+    deptId: s.deptId,
+    name: s.deptName,
+    address: s.address,
+    longitude: s.longitude,
+    latitude: s.latitude,
+    workStatus: s.workStatus,
+    workTimeStart: s.workTimeStart,
+    workTimeEnd: s.workTimeEnd,
+    distance: s.distance,
+    tags: Array.isArray(s.deptTags) ? s.deptTags : []
+  }));
+}
+function parseProducts(text) {
+  const d = parse3(text).data;
+  if (!Array.isArray(d)) return [];
+  return d.map((p) => ({
+    productId: p.productId,
+    name: p.productName,
+    skuCode: p.skuCode,
+    initialPrice: p.initialPrice,
+    estimatePrice: p.estimatePrice,
+    fallback: p.fallback,
+    tags: Array.isArray(p.tags) ? p.tags : []
+  }));
+}
+function parseQuote(text) {
+  const d = parse3(text).data ?? {};
+  const payPrice = Number(d.discountPrice);
+  if (!Number.isFinite(payPrice)) throw new Error("previewOrder \u6CA1\u6709\u8FD4\u56DE\u4EF7\u683C");
+  return {
+    payPrice,
+    initialPrice: Number(d.totalInitialPrice) || 0,
+    privilege: Number(d.privilegeMoney) || 0,
+    couponCodeList: Array.isArray(d.couponCodeList) ? d.couponCodeList : [],
+    deptId: d.shopInfo?.deptId,
+    deptName: d.shopInfo?.deptName
+  };
+}
+var isOpen = (s) => s.workStatus === "\u8425\u4E1A\u4E2D";
+
 // src/server.ts
 var AMAP_KEY_PAGE = "https://console.amap.com/dev/key/app";
 var ok = (text) => ({ content: [{ type: "text", text }] });
@@ -39673,6 +39725,100 @@ function createServer(deps) {
     skuCode: external_exports.string(),
     amount: external_exports.number().int().min(1)
   });
+  server2.registerTool(
+    "luckin_find_store",
+    {
+      description: "\u6309\u7ECF\u7EAC\u5EA6\u67E5\u9644\u8FD1\u745E\u5E78\u95E8\u5E97\uFF08\u5B98\u65B9 queryShopList\uFF09\u3002\u7ECF\u7EAC\u5EA6\u7528 locate \u628A\u5730\u6807\u6362\u6765\uFF0C\u548C\u745E\u5E78\u540C\u4E00\u5750\u6807\u7CFB\u3002\u53EA\u8FD4\u56DE\u8425\u4E1A\u4E2D\u7684\u95E8\u5E97\u7ED9\u7528\u6237\u9009\uFF1B\u9009\u5B9A\u540E\u7528 luckin_resolve_order \u628A store \u69FD\u4F4D\u586B\u6210 { deptId, longitude, latitude }\u3002\u4E0D\u5EFA\u5355\u3002",
+      inputSchema: {
+        longitude: external_exports.number(),
+        latitude: external_exports.number(),
+        include_closed: external_exports.boolean().default(false).describe("\u662F\u5426\u4E5F\u8FD4\u56DE\u6253\u70CA\u7684\u95E8\u5E97\uFF0C\u9ED8\u8BA4\u53EA\u8FD4\u56DE\u8425\u4E1A\u4E2D\u7684")
+      }
+    },
+    async ({ longitude, latitude, include_closed }) => {
+      const missing = await needUpstream();
+      if (missing) return missing;
+      try {
+        const r = await upstream.callTool("queryShopList", { longitude, latitude });
+        if (r.isError) return fail(r.text);
+        const stores = parseStores(r.text).filter((s) => include_closed || isOpen(s));
+        if (!stores.length) return fail("\u9644\u8FD1\u6CA1\u6709\u8425\u4E1A\u4E2D\u7684\u745E\u5E78\u95E8\u5E97\u3002\u53EF\u4EE5\u8BA9\u7528\u6237\u6362\u4E2A\u5730\u6807\uFF0C\u6216\u7528 include_closed \u770B\u6253\u70CA\u7684\u95E8\u5E97\u3002");
+        return json2({ stores, note: "\u628A\u95E8\u5E97\u540D\u548C\u8DDD\u79BB\u5217\u7ED9\u7528\u6237\u9009\uFF1B\u9009\u5B9A\u540E\u7528 luckin_resolve_order \u586B store \u69FD\u4F4D" });
+      } catch (e) {
+        return fail(e.message);
+      }
+    }
+  );
+  server2.registerTool(
+    "luckin_get_menu",
+    {
+      description: "\u5728\u6307\u5B9A\u95E8\u5E97\u6309\u5173\u952E\u8BCD\u641C\u5546\u54C1\uFF08\u5B98\u65B9 searchProductForMcp\uFF09\u3002\u8FD4\u56DE\u5546\u54C1\u53CA\u9ED8\u8BA4 sku\u3001\u539F\u4EF7\u3001\u5238\u540E\u9884\u4F30\u4EF7\u3002fallback=true \u8868\u793A\u6CA1\u7CBE\u786E\u547D\u4E2D\u3001\u662F\u515C\u5E95\u63A8\u8350\u3002\u9009\u5B9A\u540E\u7528 luckin_resolve_order \u628A items \u69FD\u4F4D\u586B\u6210\u5B98\u65B9 productList\uFF08\u6BCF\u9879 { productId, skuCode, amount }\uFF09\u3002\u4E0D\u5EFA\u5355\u3002",
+      inputSchema: {
+        deptId: external_exports.number().int().describe("\u95E8\u5E97 ID\uFF0C\u6765\u81EA luckin_find_store"),
+        query: external_exports.string().min(1).describe("\u7528\u6237\u539F\u59CB\u67E5\u8BE2\u6587\u672C\uFF0C\u5982\u201C\u62FF\u94C1\u201D\u201C\u751F\u6930\u201D")
+      }
+    },
+    async ({ deptId, query }) => {
+      const missing = await needUpstream();
+      if (missing) return missing;
+      try {
+        const r = await upstream.callTool("searchProductForMcp", { deptId, query });
+        if (r.isError) return fail(r.text);
+        const products = parseProducts(r.text);
+        if (!products.length) return fail(`\u95E8\u5E97 ${deptId} \u6CA1\u641C\u5230\u201C${query}\u201D\u3002\u53EF\u4EE5\u8BA9\u7528\u6237\u6362\u4E2A\u8BF4\u6CD5\u3002`);
+        return json2({ products, note: "\u5238\u540E\u9884\u4F30\u4EF7\u4EC5\u4F9B\u53C2\u8003\uFF0C\u5B9E\u9645\u4EE5 luckin_quote_best \u4E3A\u51C6" });
+      } catch (e) {
+        return fail(e.message);
+      }
+    }
+  );
+  server2.registerTool(
+    "luckin_quote_best",
+    {
+      description: "\u6838\u4EF7\uFF1A\u5BF9\u4F1A\u8BDD\u91CC\u5DF2\u786E\u5B9A\u7684\u95E8\u5E97\u548C\u5546\u54C1\u8C03\u5B98\u65B9 previewOrder\uFF0C\u8FD4\u56DE\u5238\u540E\u5B9E\u4ED8\u3001\u539F\u4EF7\u3001\u4F18\u60E0\u548C\u81EA\u52A8\u9009\u4E2D\u7684\u5238\u7801\u3002\u53EA\u6838\u4EF7\u3001\u4E0D\u5EFA\u5355\u3001\u4E0D\u5360\u5238\uFF08\u5238\u5728 createOrder \u540E\u624D\u5360\u7528\uFF09\u3002\u4F1A\u8BDD\u8981\u5148\u5230 items_ready\uFF08store \u548C items \u69FD\u4F4D\u9F50\u5168\uFF09\u3002\u8FD4\u56DE\u91CC\u5E26 state\u3001revision\u3002",
+      inputSchema: {
+        session_id: external_exports.string(),
+        expected_revision: external_exports.number().int().optional().describe("\u5E76\u53D1\u6821\u9A8C\uFF1A\u4E0E\u5F53\u524D revision \u4E0D\u7B26\u8FD4\u56DE REVISION_CONFLICT")
+      }
+    },
+    async ({ session_id, expected_revision }) => {
+      const missing = await needUpstream();
+      if (missing) return missing;
+      const s = sessions.get(session_id);
+      if (!s) return fail(JSON.stringify({ error: "SESSION_NOT_FOUND", detail: `\u627E\u4E0D\u5230\u4F1A\u8BDD ${session_id}` }));
+      if (expected_revision !== void 0 && expected_revision !== s.revision) {
+        return fail(JSON.stringify({ error: "REVISION_CONFLICT", detail: "\u8BA2\u5355\u5DF2\u88AB\u6539\u8FC7", current_revision: s.revision }));
+      }
+      if (s.state !== "items_ready") {
+        const miss = ["fulfillment", "store", "items"].filter((k) => s.slots[k] === void 0);
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: `\u8FD8\u7F3A\u69FD\u4F4D\uFF1A${miss.join("\u3001")}`, missing: miss }));
+      }
+      const storeSlot = s.slots.store?.value;
+      const items = s.slots.items?.value;
+      const deptId = storeSlot?.deptId;
+      if (typeof deptId !== "number") {
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "store \u69FD\u4F4D\u7F3A deptId\uFF0C\u8BF7\u5148 luckin_find_store \u518D resolve_order" }));
+      }
+      const parsed = external_exports.array(product).min(1).safeParse(items);
+      if (!parsed.success) {
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "items \u69FD\u4F4D\u4E0D\u662F\u5408\u6CD5\u7684\u5B98\u65B9 productList\uFF08\u6BCF\u9879 { productId, skuCode, amount }\uFF09" }));
+      }
+      try {
+        const r = await upstream.callTool("previewOrder", { deptId, productList: parsed.data });
+        if (r.isError) return fail(r.text);
+        const quote = parseQuote(r.text);
+        return json2(
+          envelope(s, {
+            reply_must_show_user: ["quote"],
+            // 透传核价结果；拆单比价留到后续步骤
+            ...{ quote }
+          })
+        );
+      } catch (e) {
+        return fail(e.message);
+      }
+    }
+  );
   let pending = [];
   server2.registerTool(
     "luckin_paysheet",

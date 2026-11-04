@@ -1,0 +1,213 @@
+{
+  "code": 0,
+  "msg": "success",
+  "data": [
+    {
+      "productId": 4805,
+      "productName": "拿铁",
+      "skuCode": "SP3225-00147",
+      "pictureUrl": "https://img01.luckincoffeecdn.com/commodity-admin/2026/05/20/e65180fb38894cb3ba28962fb06c630c.png",
+      "productAttrs": [
+        {
+          "attributeId": 64,
+          "attributeName": "杯型",
+          "productSubAttrs": [
+            {
+              "attributeId": 365,
+              "attributeName": "大杯",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 17,
+          "attributeName": "温度",
+          "productSubAttrs": [
+            {
+              "attributeId": 56,
+              "attributeName": "热",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 50,
+          "attributeName": "咖啡豆",
+          "productSubAttrs": [
+            {
+              "attributeId": 379,
+              "attributeName": "意式拼配",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 113,
+          "attributeName": "咖啡浓度",
+          "productSubAttrs": [
+            {
+              "attributeId": 706,
+              "attributeName": "默认浓度",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 18,
+          "attributeName": "糖度",
+          "productSubAttrs": [
+            {
+              "attributeId": 69,
+              "attributeName": "不另外加糖",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 102,
+          "attributeName": "奶基",
+          "productSubAttrs": [
+            {
+              "attributeId": 632,
+              "attributeName": "牛奶",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        }
+      ],
+      "tags": [],
+      "initialPrice": 15,
+      "estimatePrice": 9.9,
+      "fallback": false
+    },
+    {
+      "productId": 5836,
+      "productName": "咸芝士·豆乳鸳鸯拿铁",
+      "skuCode": "SP4256-00728",
+      "pictureUrl": "https://img01.luckincoffeecdn.com/commodity-admin/2026/09/20/c443058fe4b14b108f47fa4d347f8bdf.png",
+      "productAttrs": [
+        {
+          "attributeId": 64,
+          "attributeName": "杯型",
+          "productSubAttrs": [
+            {
+              "attributeId": 365,
+              "attributeName": "大杯",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 17,
+          "attributeName": "温度",
+          "productSubAttrs": [
+            {
+              "attributeId": 57,
+              "attributeName": "冰",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 50,
+          "attributeName": "咖啡豆",
+          "productSubAttrs": [
+            {
+              "attributeId": 634,
+              "attributeName": "深烘拼配",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 113,
+          "attributeName": "咖啡浓度",
+          "productSubAttrs": [
+            {
+              "attributeId": 706,
+              "attributeName": "默认浓度",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 14,
+          "attributeName": "糖",
+          "productSubAttrs": [
+            {
+              "attributeId": 39,
+              "attributeName": "少少甜",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 19,
+          "attributeName": "奶盖",
+          "productSubAttrs": [
+            {
+              "attributeId": 65,
+              "attributeName": "奶盖",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 100,
+          "attributeName": "茶风味",
+          "productSubAttrs": [
+            {
+              "attributeId": 729,
+              "attributeName": "醇香红茶",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        },
+        {
+          "attributeId": 102,
+          "attributeName": "奶基",
+          "productSubAttrs": [
+            {
+              "attributeId": 632,
+              "attributeName": "牛奶",
+              "selected": null,
+              "price": 0,
+              "canSelected": null
+            }
+          ]
+        }
+      ],
+      "tags": [],
+      "initialPrice": 18,
+      "estimatePrice": 9.9,
+      "fallback": false
+    }
+  ],
+  "success": true
+}

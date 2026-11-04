@@ -11,6 +11,7 @@ import { pathToFileURL } from "node:url";
 import { searchPlace, type Fetch } from "./amap.js";
 import { SessionStore, type Slot } from "./session.js";
 import { envelope } from "./envelope.js";
+import { parseStores, parseProducts, parseQuote, isOpen } from "./luckin.js";
 
 const AMAP_KEY_PAGE = "https://console.amap.com/dev/key/app";
 
@@ -272,6 +273,102 @@ export function createServer(deps: {
     skuCode: z.string(),
     amount: z.number().int().min(1),
   });
+
+  // 契约支线的查询工具（spec §5）：查门店、查菜单、核价。只读，不建单。
+  server.registerTool(
+    "luckin_find_store",
+    {
+      description:
+        "按经纬度查附近瑞幸门店（官方 queryShopList）。经纬度用 locate 把地标换来，和瑞幸同一坐标系。只返回营业中的门店给用户选；选定后用 luckin_resolve_order 把 store 槽位填成 { deptId, longitude, latitude }。不建单。",
+      inputSchema: {
+        longitude: z.number(),
+        latitude: z.number(),
+        include_closed: z.boolean().default(false).describe("是否也返回打烊的门店，默认只返回营业中的"),
+      },
+    },
+    async ({ longitude, latitude, include_closed }) => {
+      const missing = await needUpstream();
+      if (missing) return missing;
+      try {
+        const r = await upstream!.callTool("queryShopList", { longitude, latitude });
+        if (r.isError) return fail(r.text);
+        const stores = parseStores(r.text).filter((s) => include_closed || isOpen(s));
+        if (!stores.length) return fail("附近没有营业中的瑞幸门店。可以让用户换个地标，或用 include_closed 看打烊的门店。");
+        return json({ stores, note: "把门店名和距离列给用户选；选定后用 luckin_resolve_order 填 store 槽位" });
+      } catch (e) {
+        return fail((e as Error).message);
+      }
+    },
+  );
+
+  server.registerTool(
+    "luckin_get_menu",
+    {
+      description:
+        "在指定门店按关键词搜商品（官方 searchProductForMcp）。返回商品及默认 sku、原价、券后预估价。fallback=true 表示没精确命中、是兜底推荐。选定后用 luckin_resolve_order 把 items 槽位填成官方 productList（每项 { productId, skuCode, amount }）。不建单。",
+      inputSchema: {
+        deptId: z.number().int().describe("门店 ID，来自 luckin_find_store"),
+        query: z.string().min(1).describe("用户原始查询文本，如“拿铁”“生椰”"),
+      },
+    },
+    async ({ deptId, query }) => {
+      const missing = await needUpstream();
+      if (missing) return missing;
+      try {
+        const r = await upstream!.callTool("searchProductForMcp", { deptId, query });
+        if (r.isError) return fail(r.text);
+        const products = parseProducts(r.text);
+        if (!products.length) return fail(`门店 ${deptId} 没搜到“${query}”。可以让用户换个说法。`);
+        return json({ products, note: "券后预估价仅供参考，实际以 luckin_quote_best 为准" });
+      } catch (e) {
+        return fail((e as Error).message);
+      }
+    },
+  );
+
+  server.registerTool(
+    "luckin_quote_best",
+    {
+      description:
+        "核价：对会话里已确定的门店和商品调官方 previewOrder，返回券后实付、原价、优惠和自动选中的券码。只核价、不建单、不占券（券在 createOrder 后才占用）。会话要先到 items_ready（store 和 items 槽位齐全）。返回里带 state、revision。",
+      inputSchema: {
+        session_id: z.string(),
+        expected_revision: z.number().int().optional().describe("并发校验：与当前 revision 不符返回 REVISION_CONFLICT"),
+      },
+    },
+    async ({ session_id, expected_revision }) => {
+      const missing = await needUpstream();
+      if (missing) return missing;
+      const s = sessions.get(session_id);
+      if (!s) return fail(JSON.stringify({ error: "SESSION_NOT_FOUND", detail: `找不到会话 ${session_id}` }));
+      if (expected_revision !== undefined && expected_revision !== s.revision) {
+        return fail(JSON.stringify({ error: "REVISION_CONFLICT", detail: "订单已被改过", current_revision: s.revision }));
+      }
+      if (s.state !== "items_ready") {
+        const miss = ["fulfillment", "store", "items"].filter((k) => s.slots[k] === undefined);
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: `还缺槽位：${miss.join("、")}`, missing: miss }));
+      }
+      const storeSlot = s.slots.store?.value as { deptId?: number } | undefined;
+      const items = s.slots.items?.value;
+      const deptId = storeSlot?.deptId;
+      if (typeof deptId !== "number") {
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "store 槽位缺 deptId，请先 luckin_find_store 再 resolve_order" }));
+      }
+      const parsed = z.array(product).min(1).safeParse(items);
+      if (!parsed.success) {
+        return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "items 槽位不是合法的官方 productList（每项 { productId, skuCode, amount }）" }));
+      }
+      try {
+        const r = await upstream!.callTool("previewOrder", { deptId, productList: parsed.data });
+        if (r.isError) return fail(r.text);
+        const quote = parseQuote(r.text);
+        // 透传核价结果；拆单比价留到后续步骤
+        return json({ ...envelope(s, { reply_must_show_user: ["quote"] }), quote });
+      } catch (e) {
+        return fail((e as Error).message);
+      }
+    },
+  );
 
   // 最近一批拆单里待付款的单。只存在内存里：付款链接谁拿到都能付，不写进下单记录之外的地方
   let pending: PayEntry[] = [];
