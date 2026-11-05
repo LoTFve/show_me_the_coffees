@@ -102,3 +102,35 @@ export function parseQuote(text: string): Quote {
 
 /** 门店此刻能不能下单（spec：workStatus 为“打烊中”时不要下单） */
 export const isOpen = (s: Store): boolean => s.workStatus === "营业中";
+
+/** 一个下单方案（spec §5.2 的 plan） */
+export interface Plan {
+  kind: "combined" | "split";
+  /** 实付合计（元） */
+  payYuan: number;
+  /** 要付几次款 */
+  orderCount: number;
+  /** 拆单实付是乐观下界：预览不占券，真实可能更高 */
+  estimated: boolean;
+}
+
+/**
+ * 比较合单和拆单两个方案（spec §5.2）。
+ * combinedPayYuan：一次 previewOrder 全部商品的实付；准。
+ * splitPays：每杯单独 previewOrder 的实付数组；求和是乐观下界（预览不占券，
+ *   每杯都按能拿到最便宜券估，真实下单时券被占用、后面的单可能更贵）。
+ * baselineYuan：原价合计（不加本次优惠），用来算省了多少。
+ */
+export function comparePlans(combinedPayYuan: number, splitPays: number[], baselineYuan: number) {
+  const splitTotal = splitPays.reduce((s, p) => s + p, 0);
+  const combined: Plan = { kind: "combined", payYuan: combinedPayYuan, orderCount: 1, estimated: false };
+  const split: Plan = { kind: "split", payYuan: splitTotal, orderCount: splitPays.length, estimated: true };
+  const cheaper = split.payYuan < combined.payYuan ? "split" : "combined";
+  return {
+    plans: [combined, split],
+    cheaper,
+    baselineYuan,
+    // 省多少：拿两方案里更省的那个和原价比；拆单是估计，所以是“最多省”
+    maxSaveYuan: Math.max(0, baselineYuan - Math.min(combined.payYuan, split.payYuan)),
+  };
+}

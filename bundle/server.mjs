@@ -39532,6 +39532,19 @@ function parseQuote(text) {
   };
 }
 var isOpen = (s) => s.workStatus === "\u8425\u4E1A\u4E2D";
+function comparePlans(combinedPayYuan, splitPays, baselineYuan) {
+  const splitTotal = splitPays.reduce((s, p) => s + p, 0);
+  const combined = { kind: "combined", payYuan: combinedPayYuan, orderCount: 1, estimated: false };
+  const split = { kind: "split", payYuan: splitTotal, orderCount: splitPays.length, estimated: true };
+  const cheaper = split.payYuan < combined.payYuan ? "split" : "combined";
+  return {
+    plans: [combined, split],
+    cheaper,
+    baselineYuan,
+    // 省多少：拿两方案里更省的那个和原价比；拆单是估计，所以是“最多省”
+    maxSaveYuan: Math.max(0, baselineYuan - Math.min(combined.payYuan, split.payYuan))
+  };
+}
 
 // src/server.ts
 var AMAP_KEY_PAGE = "https://console.amap.com/dev/key/app";
@@ -39825,11 +39838,29 @@ ${r.text}` : r.text
       if (!parsed.success) {
         return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "items \u69FD\u4F4D\u4E0D\u662F\u5408\u6CD5\u7684\u5B98\u65B9 productList\uFF08\u6BCF\u9879 { productId, skuCode, amount }\uFF09" }));
       }
+      const cups = parsed.data.flatMap((p) => Array.from({ length: p.amount }, () => ({ ...p, amount: 1 })));
       try {
         const r = await upstream.callTool("previewOrder", { deptId, productList: parsed.data });
         if (r.isError) return fail(r.text);
-        const quote = parseQuote(r.text);
-        return json2({ ...envelope(s, { reply_must_show_user: ["quote"] }), quote });
+        const combined = parseQuote(r.text);
+        if (cups.length === 1) {
+          return json2({ ...envelope(s, { reply_must_show_user: ["quote"] }), quote: combined });
+        }
+        const splitPays = [];
+        for (const cup of cups) {
+          const pr = await upstream.callTool("previewOrder", { deptId, productList: [cup] });
+          if (pr.isError) return fail(pr.text);
+          splitPays.push(parseQuote(pr.text).payPrice);
+        }
+        const cmp = comparePlans(combined.payPrice, splitPays, combined.initialPrice);
+        return json2({
+          ...envelope(s, { reply_must_show_user: ["comparison"] }),
+          comparison: {
+            ...cmp,
+            coupon_note: "\u62C6\u5355\u5B9E\u4ED8\u662F\u9884\u89C8\u4F30\u8BA1\uFF08\u9884\u89C8\u4E0D\u5360\u5238\uFF09\uFF0C\u771F\u5B9E\u603B\u4EF7\u8981\u5230\u4E0B\u5355\u624D\u786E\u5B9A\uFF0C\u53EF\u80FD\u66F4\u9AD8",
+            baseline_note: "\u57FA\u7EBF\u662F\u539F\u4EF7\u5408\u8BA1\uFF0C\u7701=\u539F\u4EF7\u2212\u5B9E\u4ED8"
+          }
+        });
       } catch (e) {
         return fail(e.message);
       }
