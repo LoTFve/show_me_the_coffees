@@ -1,0 +1,50 @@
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "orderId": "ORDER_PLACEHOLDER",
+    "orderStatus": 10,
+    "orderStatusName": "待付款",
+    "createTime": "2026-11-05 15:31",
+    "aboutTime": 0,
+    "takeMealTime": "",
+    "takeMealCodeInfo": {
+      "code": "生成中",
+      "takeOrderId": "ORDER_PLACEHOLDER"
+    },
+    "shopInfo": {
+      "deptId": 606675,
+      "deptName": "中国科学技术大学高新校区内部店",
+      "address": "安徽省合肥市高新区长宁社区服务中心复兴路100号中国科学技术大学高新校区信智大楼读者服务部01号铺",
+      "supportSend": 1,
+      "deptTags": [],
+      "longitude": 117.131554,
+      "latitude": 31.818673,
+      "workTimeStart": "09:00",
+      "workTimeEnd": "18:00",
+      "distance": 0,
+      "number": "(No.20773)",
+      "workStatus": "营业中"
+    },
+    "productInfoList": null,
+    "orderPayAmount": 9.9,
+    "dispatchInfo": {
+      "dispatcherName": "",
+      "dispatcherMobile": "",
+      "dispatchAboutTime": "",
+      "destinationDistance": 0
+    },
+    "orderCommodityList": [
+      {
+        "commodityId": 4805,
+        "commodityCode": "SP3225",
+        "commodityName": "拿铁",
+        "payableMoney": 9.9,
+        "payMoney": 9.9
+      }
+    ],
+    "orderType": "2",
+    "customerParams": null
+  },
+  "success": true
+}
