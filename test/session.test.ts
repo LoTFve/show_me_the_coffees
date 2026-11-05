@@ -14,14 +14,24 @@ import type { Upstream } from "../src/upstream.js";
 import { readFileSync } from "node:fs";
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
 
-// 返回真实脱敏夹具的上游；createOrder 返回可解析成付款入口的订单
+// 返回真实脱敏夹具的上游；createOrder 返回可解析成付款入口的订单，
+// 并模拟瑞幸“未付款单最多 3 单”的真实约束与订单付款状态。
 class FixtureUpstream implements Upstream {
   createCalls = 0;
   previewCalls = 0;
+  /** 已下单的 orderId（按下单顺序） */
+  placed: string[] = [];
+  /** 已付款（或已取消）的 orderId，不再占未付款名额 */
+  paid = new Set<string>();
+  /** 关掉未付款上限模拟（默认开，模拟真实 3 单限制） */
+  enforceCap = true;
+  private unpaidCount() {
+    return this.placed.filter((id) => !this.paid.has(id)).length;
+  }
   async listTools() {
     return [{ name: "queryShopList", inputSchema: {} }];
   }
-  async callTool(name: string) {
+  async callTool(name: string, args?: Record<string, unknown>) {
     if (name === "queryShopList") return { text: fixture("queryShopList"), isError: false };
     if (name === "searchProductForMcp") return { text: fixture("searchProductForMcp"), isError: false };
     if (name === "previewOrder") {
@@ -32,16 +42,27 @@ class FixtureUpstream implements Upstream {
       return { text: JSON.stringify(j), isError: false };
     }
     if (name === "createOrder") {
+      if (this.enforceCap && this.unpaidCount() >= 3) {
+        return { text: '{"code":1000,"msg":"您有未支付订单，请先支付后再下新单吧","success":false}', isError: true };
+      }
       this.createCalls++;
       const n = this.createCalls;
+      const orderId = `7701${n}`;
+      this.placed.push(orderId);
       const data = {
-        orderIdStr: `7701${n}`,
+        orderIdStr: orderId,
         needPay: true,
         discountPrice: 9.9,
         payOrderQrCodeUrl: `https://open.lkcoffee.com/transfer/qrcode?token=t${n}`,
         payOrderUrl: `weixin://wxpay/bizpayurl?pr=p${n}`,
       };
       return { text: JSON.stringify({ code: 0, success: true, data }), isError: false };
+    }
+    if (name === "queryOrderDetailInfo") {
+      const id = String(args?.orderId ?? "");
+      // orderStatus 10 = 待付款；已付款的用别的码（这里用 20）
+      const orderStatus = this.paid.has(id) ? 20 : 10;
+      return { text: JSON.stringify({ code: 0, success: true, data: { orderId: id, orderStatus } }), isError: false };
     }
     return { text: `ok:${name}`, isError: false };
   }
@@ -273,5 +294,41 @@ describe("session contract (spec §5)", () => {
     expect(r.isError).toBe(true);
     expect(JSON.parse(text(r)).detail).toMatch(/longitude|latitude/);
     expect(stubUpstream.createCalls).toBe(0);
+  });
+
+  it("prepare_checkout stops at the 3-unpaid cap and leaves a resumable remainder", async () => {
+    await readyFor(5); // 5 杯，瑞幸最多 3 单未付款
+    const r = await client.callTool({ name: "luckin_prepare_checkout", arguments: { session_id: "s1" } });
+    expect(r.isError).toBeFalsy();
+    expect(stubUpstream.createCalls).toBe(3);
+    expect(text(r)).toMatch(/已下 3 单/);
+    expect(text(r)).toMatch(/还剩 2 单|luckin_wait_payment/);
+  });
+
+  it("wait_payment resumes remaining orders once the user pays, freeing unpaid slots", async () => {
+    await readyFor(5);
+    await client.callTool({ name: "luckin_prepare_checkout", arguments: { session_id: "s1" } });
+    expect(stubUpstream.createCalls).toBe(3);
+    // 用户付掉前 2 单，腾出 2 个名额
+    stubUpstream.paid.add(stubUpstream.placed[0]);
+    stubUpstream.paid.add(stubUpstream.placed[1]);
+    const r = await client.callTool({ name: "luckin_wait_payment", arguments: { session_id: "s1", max_wait_seconds: 1 } });
+    expect(r.isError).toBeFalsy();
+    expect(stubUpstream.createCalls).toBe(5); // 剩下的 2 单续下
+  });
+
+  it("wait_payment keeps waiting when nothing is paid yet", async () => {
+    await readyFor(5);
+    await client.callTool({ name: "luckin_prepare_checkout", arguments: { session_id: "s1" } });
+    const r = await client.callTool({ name: "luckin_wait_payment", arguments: { session_id: "s1", max_wait_seconds: 1 } });
+    expect(r.isError).toBeFalsy();
+    expect(text(r)).toMatch(/还在等付款/);
+    expect(stubUpstream.createCalls).toBe(3); // 没腾出名额，不续单
+  });
+
+  it("wait_payment reports when there is no pending checkout job", async () => {
+    await start();
+    const r = await client.callTool({ name: "luckin_wait_payment", arguments: { session_id: "s1" } });
+    expect(text(r)).toMatch(/没有进行中的拆单任务/);
   });
 });

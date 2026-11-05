@@ -39451,7 +39451,14 @@ function allowedActions(state) {
     case "collecting":
       return ["luckin_resolve_order"];
     case "items_ready":
-      return ["luckin_resolve_order", "luckin_find_store", "luckin_get_menu", "luckin_quote_best", "luckin_prepare_checkout"];
+      return [
+        "luckin_resolve_order",
+        "luckin_find_store",
+        "luckin_get_menu",
+        "luckin_quote_best",
+        "luckin_prepare_checkout",
+        "luckin_wait_payment"
+      ];
   }
 }
 function envelope(session, extra = {}) {
@@ -39528,6 +39535,9 @@ var CLAIM_HINT = "\u8BF7\u63D0\u9192\u7528\u6237\u53BB\u745E\u5E78 App \u6216\u5
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 var PAYSHEET_HINT = "\u591A\u5355\u8981\u5206\u522B\u4ED8\u6B3E\u3002\u53EF\u4EE5\u8C03\u7528 luckin_paysheet \u628A\u4ED8\u6B3E\u5165\u53E3\u96C6\u4E2D\u8D77\u6765\uFF1Aformat=html \u751F\u6210\u672C\u673A\u7F51\u9875\uFF08\u624B\u673A\u626B\u7801\uFF09\uFF0Cformat=markdown \u751F\u6210\u53EF\u4EE5\u5BFC\u5165\u98DE\u4E66\u6587\u6863\u7684\u5185\u5BB9\uFF08\u624B\u673A\u4E0A\u70B9\u94FE\u63A5\uFF09\u3002\u5148\u95EE\u7528\u6237\u8981\u54EA\u79CD\u3002";
 var isRateLimited = (text) => /手速太快|稍后重试|频繁/.test(text);
+var MAX_UNPAID = 3;
+var isTooManyUnpaid = (text) => /未支付订单|先支付后再下/.test(text);
+var STATUS_UNPAID = 10;
 function payInfo(text) {
   try {
     const d = JSON.parse(text).data ?? {};
@@ -39540,11 +39550,6 @@ function payInfo(text) {
   } catch {
     return text;
   }
-}
-function summary(report, total2, stoppedAt, paid) {
-  const sum = `\u5408\u8BA1\u5B9E\u4ED8 \xA5${paid.toFixed(2)}\uFF0C\u8BA2\u5355\u9700\u6309\u5B98\u65B9\u8FD4\u56DE\u7684\u65B9\u5F0F\u4ED8\u6B3E\u3002`;
-  const head = stoppedAt === total2 ? `\u5168\u90E8 ${total2} \u5355\u5DF2\u4E0B\u5355\uFF0C${sum}` : `\u5DF2\u505C\u6B62\uFF1A\u6210\u529F ${stoppedAt} \u5355\uFF0C\u7B2C ${stoppedAt + 1} \u5355\u672A\u5B8C\u6210\uFF0C\u5269\u4F59 ${total2 - stoppedAt - 1} \u5355\u672A\u6267\u884C\u3002${sum}`;
-  return [head, ...report].join("\n\n");
 }
 var INSTRUCTIONS = `\u745E\u5E78\u70B9\u5355\u52A9\u624B\u3002\u6D41\u7A0B\uFF1A
 1. \u5148\u8C03\u7528 lucky_profile \u8BFB\u53D6\u7528\u6237\u7684\u53E3\u5473\u504F\u597D\u3001\u5E38\u7528\u95E8\u5E97\u548C\u6536\u85CF\uFF0C\u7528\u5B83\u8865\u5168\u7528\u6237\u6CA1\u8BF4\u7684\u7EC6\u8282\uFF08\u89C4\u683C\u3001\u6E29\u5EA6\u3001\u751C\u5EA6\u3001\u95E8\u5E97\uFF09\u3002
@@ -39814,20 +39819,21 @@ function createServer(deps) {
     }
   );
   let pending = [];
-  async function executeBatch(plan) {
-    const { deptId, longitude, latitude, orders, max_pay_each } = plan;
+  async function executeBatch(deptId, longitude, latitude, orders, maxPayEach, unpaidBudget) {
     const report = [];
     const usedCoupons = /* @__PURE__ */ new Set();
+    const entries = [];
     let paid = 0;
-    pending = [];
+    let placed = 0;
     for (const [i, o] of orders.entries()) {
+      if (placed >= unpaidBudget) {
+        return { placed, entries, report, paid, hitUnpaidCap: true };
+      }
       const name = `\u7B2C ${i + 1} \u5355${o.label ? `\uFF08${o.label}\uFF09` : ""}`;
       if (i > 0) await sleep(orderGapMs);
       const stop = (msg) => {
         report.push(`${name}\uFF1A${msg}`);
-        return fail(summary(report, orders.length, i, paid) + (pending.length ? `
-
-${PAYSHEET_HINT}` : ""));
+        return { placed, entries, report, paid, hitUnpaidCap: false, stoppedReason: msg };
       };
       let preview;
       try {
@@ -39840,9 +39846,9 @@ ${PAYSHEET_HINT}` : ""));
       const price = Number(preview.discountPrice);
       const coupons = preview.couponCodeList ?? [];
       if (!Number.isFinite(price)) return stop("\u9884\u89C8\u6CA1\u6709\u8FD4\u56DE\u4EF7\u683C\uFF0C\u672A\u4E0B\u5355");
-      if (price > max_pay_each) {
+      if (price > maxPayEach) {
         const hint = coupons.length ? "\u53EF\u80FD\u80FD\u7528\u7684\u5238\u5DF2\u7ECF\u7528\u5B8C" : `\u5238\u5DF2\u7528\u5B8C\u3002${CLAIM_HINT}`;
-        return stop(`\u5B9E\u4ED8 \xA5${price} \u8D85\u8FC7\u4E0A\u9650 \xA5${max_pay_each}\uFF0C${hint}\uFF0C\u672A\u4E0B\u5355`);
+        return stop(`\u5B9E\u4ED8 \xA5${price} \u8D85\u8FC7\u4E0A\u9650 \xA5${maxPayEach}\uFF0C${hint}\uFF0C\u672A\u4E0B\u5355`);
       }
       const dup = coupons.find((c) => usedCoupons.has(c));
       if (dup) return stop(`\u5238 ${dup} \u5DF2\u7528\u5728\u524D\u9762\u67D0\u5355\uFF08\u53EF\u80FD\u8981\u5148\u4ED8\u6B3E\u624D\u4F1A\u5360\u7528\uFF09\uFF0C\u672A\u4E0B\u5355`);
@@ -39858,20 +39864,39 @@ ${PAYSHEET_HINT}` : ""));
       } catch (e) {
         return stop(`\u7ED3\u679C\u672A\u77E5\uFF0C${e.message}\u3002\u53EF\u80FD\u5DF2\u4E0B\u5355\uFF0C\u8BF7\u5148\u6838\u5B9E\u518D\u51B3\u5B9A\u662F\u5426\u8865\u4E0B`);
       }
+      if (r.isError && isTooManyUnpaid(r.text)) {
+        return { placed, entries, report, paid, hitUnpaidCap: true };
+      }
       await store.update((d) => {
         d.orders.push({ at: (/* @__PURE__ */ new Date()).toISOString(), tool: "createOrder", args, result: r.text.slice(0, 2e3) });
       });
       if (r.isError) return stop(`\u4E0B\u5355\u5931\u8D25\uFF0C${r.text}`);
       coupons.forEach((c) => usedCoupons.add(c));
       paid += price;
+      placed++;
       const entry = payEntryOf(r.text, o.label ?? `\u7B2C ${i + 1} \u5355`, price);
-      if (entry) pending.push(entry);
+      if (entry) entries.push(entry);
       report.push(`${name}\uFF1A\u6210\u529F\uFF0C\u5B9E\u4ED8 \xA5${price}${coupons.length ? `\uFF0C\u5238 ${coupons.join("\u3001")}` : "\uFF0C\u672A\u7528\u5238"}
 ${payInfo(r.text)}`);
     }
-    return ok(summary(report, orders.length, orders.length, paid) + (pending.length > 1 ? `
+    return { placed, entries, report, paid, hitUnpaidCap: false };
+  }
+  function renderExec(res, total2, remainingAfter) {
+    pending = res.entries;
+    const sum = `\u5408\u8BA1\u5B9E\u4ED8 \xA5${res.paid.toFixed(2)}\uFF0C\u8BA2\u5355\u9700\u6309\u5B98\u65B9\u8FD4\u56DE\u7684\u65B9\u5F0F\u4ED8\u6B3E\u3002`;
+    let head;
+    if (res.hitUnpaidCap && remainingAfter > 0) {
+      head = `\u5DF2\u4E0B ${res.placed} \u5355\uFF08\u745E\u5E78\u672A\u4ED8\u6B3E\u5355\u6700\u591A ${MAX_UNPAID} \u5355\uFF09\u3002\u8FD8\u5269 ${remainingAfter} \u5355\u6CA1\u4E0B\uFF1A\u8BF7\u5148\u4ED8\u6389\u5DF2\u4E0B\u7684\u5355\uFF0C\u518D\u8C03\u7528 luckin_wait_payment \u81EA\u52A8\u7EED\u4E0B\u5269\u4F59\u7684\u3002${sum}`;
+    } else if (res.stoppedReason) {
+      head = `\u5DF2\u505C\u6B62\uFF1A\u6210\u529F ${res.placed} \u5355\uFF0C\u7B2C ${res.placed + 1} \u5355\u672A\u5B8C\u6210\uFF0C\u5269\u4F59 ${remainingAfter - 1} \u5355\u672A\u6267\u884C\u3002${sum}`;
+    } else {
+      head = `\u5168\u90E8 ${total2} \u5355\u5DF2\u4E0B\u5355\uFF0C${sum}`;
+    }
+    const body = [head, ...res.report].join("\n\n");
+    const hint = res.entries.length > (remainingAfter > 0 ? 0 : 1) ? `
 
-${PAYSHEET_HINT}` : ""));
+${PAYSHEET_HINT}` : "";
+    return res.stoppedReason ? fail(body + hint) : ok(body + hint);
   }
   server2.registerTool(
     "luckin_prepare_checkout",
@@ -39906,9 +39931,7 @@ ${PAYSHEET_HINT}` : ""));
       if (!parsed.success) {
         return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "items \u69FD\u4F4D\u4E0D\u662F\u5408\u6CD5\u7684\u5B98\u65B9 productList\uFF08\u6BCF\u9879 { productId, skuCode, amount }\uFF09" }));
       }
-      const orders = parsed.data.flatMap(
-        (p) => Array.from({ length: p.amount }, () => ({ productList: [{ ...p, amount: 1 }] }))
-      );
+      const orders = parsed.data.flatMap((p) => Array.from({ length: p.amount }, () => ({ productList: [{ ...p, amount: 1 }] }))).map((o, i) => ({ ...o, label: `\u7B2C ${i + 1} \u5355` }));
       const auth2 = s.authorization;
       const maxEach = auth2.max_total_cents ? auth2.max_total_cents / 100 / orders.length : 9999;
       const plan = { deptId, longitude, latitude, orders, max_pay_each: maxEach };
@@ -39927,7 +39950,81 @@ ${PAYSHEET_HINT}` : ""));
         const reason = gate.redeem(confirm_code, "prepare_checkout", plan);
         if (reason) return fail(JSON.stringify({ error: "CONFIRM_INVALID", detail: reason }));
       }
-      return executeBatch(plan);
+      const res = await executeBatch(deptId, longitude, latitude, orders, maxEach, MAX_UNPAID);
+      const placedOrders = orders.slice(0, res.placed);
+      const remaining = orders.slice(res.placed);
+      s.checkout = {
+        deptId,
+        longitude,
+        latitude,
+        maxPayEach: maxEach,
+        placed: res.entries.map((e) => ({ orderId: e.orderId, label: e.label })),
+        remaining: remaining.map((o) => ({ productList: o.productList, label: o.label }))
+      };
+      return renderExec(res, orders.length, remaining.length);
+    }
+  );
+  server2.registerTool(
+    "luckin_wait_payment",
+    {
+      description: "\u5206\u6279\u62C6\u5355\u65F6\uFF0C\u7B49\u7528\u6237\u4ED8\u6389\u5DF2\u4E0B\u7684\u5355\u3001\u817E\u51FA\u672A\u4ED8\u6B3E\u540D\u989D\u540E\uFF0C\u81EA\u52A8\u7EED\u4E0B\u5269\u4F59\u7684\u5355\u3002\u6709\u754C\u7B49\u5F85\uFF1A\u5355\u6B21\u6700\u591A\u8F6E\u8BE2\u7EA6 25 \u79D2\uFF0C\u671F\u95F4\u6BCF\u9694\u51E0\u79D2\u67E5\u4E00\u6B21\u5DF2\u4E0B\u5355\u7684\u4ED8\u6B3E\u72B6\u6001\uFF1B\u4E00\u65E6\u817E\u51FA\u540D\u989D\u5C31\u7EED\u4E0B\u5269\u4F59\u5355\u3002\u8FD4\u56DE\u5DF2\u4E0B/\u5269\u4F59\u5355\u6570\u548C\u4ED8\u6B3E\u5165\u53E3\u3002\u8FD8\u6709\u5269\u4F59\u65F6\u53EF\u91CD\u590D\u8C03\u7528\u3002\u6CA1\u6709\u8FDB\u884C\u4E2D\u7684\u62C6\u5355\u4EFB\u52A1\u65F6\u8FD4\u56DE\u63D0\u793A\u3002",
+      inputSchema: {
+        session_id: external_exports.string(),
+        max_wait_seconds: external_exports.number().int().min(1).max(60).default(25).describe("\u672C\u6B21\u6700\u591A\u7B49\u5F85\u7684\u79D2\u6570\uFF0C\u9ED8\u8BA4 25")
+      }
+    },
+    async ({ session_id, max_wait_seconds }) => {
+      const miss = await needUpstream();
+      if (miss) return miss;
+      const s = sessions.get(session_id);
+      if (!s) return fail(JSON.stringify({ error: "SESSION_NOT_FOUND", detail: `\u627E\u4E0D\u5230\u4F1A\u8BDD ${session_id}` }));
+      const job = s.checkout;
+      if (!job) return fail("\u6CA1\u6709\u8FDB\u884C\u4E2D\u7684\u62C6\u5355\u4EFB\u52A1\u3002\u5148\u7528 luckin_prepare_checkout \u5EFA\u5355\u3002");
+      if (!job.remaining.length) return ok("\u6240\u6709\u5355\u90FD\u5DF2\u4E0B\u5B8C\uFF0C\u6CA1\u6709\u5269\u4F59\u8981\u7EED\u4E0B\u7684\u3002\u8BF7\u4ED8\u6389\u672A\u4ED8\u6B3E\u7684\u5355\u3002");
+      const settledCount = async () => {
+        let settled = 0;
+        for (const p of job.placed) {
+          if (p.settled) {
+            settled++;
+            continue;
+          }
+          try {
+            const r = await upstream.callTool("queryOrderDetailInfo", { orderId: p.orderId });
+            if (!r.isError) {
+              const st = Number(JSON.parse(r.text).data?.orderStatus);
+              if (Number.isFinite(st) && st !== STATUS_UNPAID) {
+                p.settled = true;
+                settled++;
+              }
+            }
+          } catch {
+          }
+        }
+        return settled;
+      };
+      const deadline = Date.now() + max_wait_seconds * 1e3;
+      const pollGap = Math.max(orderGapMs, 3e3);
+      let budget = 0;
+      for (; ; ) {
+        const settled = await settledCount();
+        const unpaid = job.placed.length - settled;
+        budget = MAX_UNPAID - unpaid;
+        if (budget > 0) break;
+        if (Date.now() + pollGap >= deadline) {
+          return ok(
+            `\u8FD8\u5728\u7B49\u4ED8\u6B3E\uFF1A\u5DF2\u4E0B ${job.placed.length} \u5355\u90FD\u672A\u4ED8\u6B3E\uFF0C\u8FD8\u5269 ${job.remaining.length} \u5355\u6CA1\u4E0B\u3002\u4ED8\u6389\u5DF2\u4E0B\u7684\u5355\u540E\u518D\u8C03\u7528 luckin_wait_payment \u7EED\u4E0B\u3002`
+          );
+        }
+        await sleep(pollGap);
+      }
+      const toPlace = job.remaining.slice(0, budget).map((o, i) => ({
+        productList: o.productList,
+        label: o.label || `\u7EED\u7B2C ${i + 1} \u5355`
+      }));
+      const res = await executeBatch(job.deptId, job.longitude, job.latitude, toPlace, job.maxPayEach, budget);
+      job.placed.push(...res.entries.map((e) => ({ orderId: e.orderId, label: e.label })));
+      job.remaining = job.remaining.slice(res.placed);
+      return renderExec(res, res.placed, job.remaining.length);
     }
   );
   server2.registerTool(
@@ -39990,7 +40087,8 @@ ${PAYSHEET_HINT}` : ""));
       }
       const reason = gate.redeem(confirm_code, "batch", plan);
       if (reason) return fail(reason);
-      return executeBatch(plan);
+      const res = await executeBatch(deptId, longitude, latitude, orders, max_pay_each, orders.length);
+      return renderExec(res, orders.length, orders.length - res.placed);
     }
   );
   const amapKey = async () => config3.amapKey ?? await readToken(config3.amapKeyFile);

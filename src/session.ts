@@ -44,6 +44,32 @@ export function defaultAuthorization(): Authorization {
   return { select_items: false, auto_substitute: false, allow_split: false, prepare_unpaid_order: false };
 }
 
+/** 已下单的一单，用来轮询付款状态、续下剩余单 */
+export interface PlacedOrder {
+  orderId: string;
+  /** 用户可见的说明，如“第 1 单” */
+  label: string;
+  /** 已观察到的付款状态：true 已不占未付款名额（已付/已取消），undefined 还没查 */
+  settled?: boolean;
+}
+
+/**
+ * 拆单建单任务（spec §5：prepare_checkout 返回持久 job）。
+ * 瑞幸限制未付款单最多 3 单，所以拆单超过 3 单时分批建：
+ * 先建一批，用户付掉几单腾出名额后，再建剩余的。
+ */
+export interface CheckoutJob {
+  /** 还没建单的剩余单（官方 productList，每单 1 杯） */
+  remaining: { productList: unknown; label: string }[];
+  /** 已建单、待观察付款的单 */
+  placed: PlacedOrder[];
+  deptId: number;
+  longitude: number;
+  latitude: number;
+  /** 每单实付上限（元） */
+  maxPayEach: number;
+}
+
 export interface Session {
   id: string;
   revision: number;
@@ -52,6 +78,8 @@ export interface Session {
   authorization: Authorization;
   /** 用户最近一次的原话，供落槽位时取证 */
   utterance?: string;
+  /** 进行中的拆单建单任务；分批建单时跨工具调用保留进度 */
+  checkout?: CheckoutJob;
 }
 
 /** 内存会话表。P0 单机单用户，重启即清空；持久化留到接入云端编排时做。 */

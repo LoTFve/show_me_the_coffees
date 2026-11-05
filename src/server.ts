@@ -27,6 +27,12 @@ const PAYSHEET_HINT =
   "多单要分别付款。可以调用 luckin_paysheet 把付款入口集中起来：format=html 生成本机网页（手机扫码），format=markdown 生成可以导入飞书文档的内容（手机上点链接）。先问用户要哪种。";
 /** 瑞幸限流：{"code":1000,"msg":"您手速太快啦，稍后重试吧~"} */
 const isRateLimited = (text: string) => /手速太快|稍后重试|频繁/.test(text);
+/** 瑞幸未付款订单上限（实测 3 单，见 AGENTS.md）。超过时 createOrder 被拒 */
+const MAX_UNPAID = 3;
+/** 命中“您有未支付订单，请先支付后再下新单” */
+const isTooManyUnpaid = (text: string) => /未支付订单|先支付后再下/.test(text);
+/** queryOrderDetailInfo 里 orderStatus=10 为待付款（实测）；非 10 视为已腾出未付款名额 */
+const STATUS_UNPAID = 10;
 
 /** 从 createOrder 返回里取出订单号和付款链接 */
 function payInfo(text: string): string {
@@ -41,16 +47,6 @@ function payInfo(text: string): string {
   } catch {
     return text;
   }
-}
-
-/** stoppedAt：出问题那一单的下标；全部成功时等于 total */
-function summary(report: string[], total: number, stoppedAt: number, paid: number): string {
-  const sum = `合计实付 ¥${paid.toFixed(2)}，订单需按官方返回的方式付款。`;
-  const head =
-    stoppedAt === total
-      ? `全部 ${total} 单已下单，${sum}`
-      : `已停止：成功 ${stoppedAt} 单，第 ${stoppedAt + 1} 单未完成，剩余 ${total - stoppedAt - 1} 单未执行。${sum}`;
-  return [head, ...report].join("\n\n");
 }
 
 const INSTRUCTIONS = `瑞幸点单助手。流程：
@@ -376,23 +372,50 @@ export function createServer(deps: {
   type BatchOrder = { label?: string; productList: z.infer<typeof product>[]; remark?: string };
   type BatchPlan = { deptId: number; longitude: number; latitude: number; orders: BatchOrder[]; max_pay_each: number };
 
+  type ExecResult = {
+    /** 已成功下单的数量 */
+    placed: number;
+    /** 这一批的待付款单 */
+    entries: PayEntry[];
+    /** 逐单文字说明 */
+    report: string[];
+    /** 本批已成功单的实付合计 */
+    paid: number;
+    /** 命中未付款上限而停下（可在腾出名额后续下剩余单） */
+    hitUnpaidCap: boolean;
+    /** 其他原因停下的说明；正常走完为空 */
+    stoppedReason?: string;
+  };
+
   /**
-   * 拆单执行：依次 previewOrder → createOrder，每单各用一张券，
+   * 拆单执行：依次 previewOrder → createOrder，每单各用一张券。
+   * 已成功下单达到 unpaidBudget（当前未付款名额）时停下，标记 hitUnpaidCap；
+   * 命中“您有未支付订单”也同样停下（名额估计偏乐观时的兜底）。
    * 实付超上限或券重复就停。限流自动退避重试，网络异常不盲目重试（可能已下单）。
-   * luckin_batch 和 luckin_prepare_checkout 共用这一段。会把本批待付款单写进 pending。
+   * 只执行，不渲染最终文案；调用方据 ExecResult 组织回复。会把本批待付款单写进 pending。
    */
-  async function executeBatch(plan: BatchPlan) {
-    const { deptId, longitude, latitude, orders, max_pay_each } = plan;
+  async function executeBatch(
+    deptId: number,
+    longitude: number,
+    latitude: number,
+    orders: BatchOrder[],
+    maxPayEach: number,
+    unpaidBudget: number,
+  ): Promise<ExecResult> {
     const report: string[] = [];
     const usedCoupons = new Set<string>();
+    const entries: PayEntry[] = [];
     let paid = 0;
-    pending = [];
+    let placed = 0;
     for (const [i, o] of orders.entries()) {
+      if (placed >= unpaidBudget) {
+        return { placed, entries, report, paid, hitUnpaidCap: true };
+      }
       const name = `第 ${i + 1} 单${o.label ? `（${o.label}）` : ""}`;
       if (i > 0) await sleep(orderGapMs);
-      const stop = (msg: string) => {
+      const stop = (msg: string): ExecResult => {
         report.push(`${name}：${msg}`);
-        return fail(summary(report, orders.length, i, paid) + (pending.length ? `\n\n${PAYSHEET_HINT}` : ""));
+        return { placed, entries, report, paid, hitUnpaidCap: false, stoppedReason: msg };
       };
 
       let preview: { discountPrice?: number; couponCodeList?: string[] };
@@ -406,9 +429,9 @@ export function createServer(deps: {
       const price = Number(preview.discountPrice);
       const coupons = preview.couponCodeList ?? [];
       if (!Number.isFinite(price)) return stop("预览没有返回价格，未下单");
-      if (price > max_pay_each) {
+      if (price > maxPayEach) {
         const hint = coupons.length ? "可能能用的券已经用完" : `券已用完。${CLAIM_HINT}`;
-        return stop(`实付 ¥${price} 超过上限 ¥${max_pay_each}，${hint}，未下单`);
+        return stop(`实付 ¥${price} 超过上限 ¥${maxPayEach}，${hint}，未下单`);
       }
       const dup = coupons.find((c) => usedCoupons.has(c));
       if (dup) return stop(`券 ${dup} 已用在前面某单（可能要先付款才会占用），未下单`);
@@ -427,17 +450,42 @@ export function createServer(deps: {
         // 网络异常时上游可能已经下单成功，不能盲目重试
         return stop(`结果未知，${(e as Error).message}。可能已下单，请先核实再决定是否补下`);
       }
+      // 名额估计偏乐观时的兜底：瑞幸明确说未付款单已满，没有建单，安全地停下续后
+      if (r.isError && isTooManyUnpaid(r.text)) {
+        return { placed, entries, report, paid, hitUnpaidCap: true };
+      }
       await store.update((d) => {
         d.orders.push({ at: new Date().toISOString(), tool: "createOrder", args, result: r.text.slice(0, 2000) });
       });
       if (r.isError) return stop(`下单失败，${r.text}`);
       coupons.forEach((c) => usedCoupons.add(c));
       paid += price;
+      placed++;
       const entry = payEntryOf(r.text, o.label ?? `第 ${i + 1} 单`, price);
-      if (entry) pending.push(entry);
+      if (entry) entries.push(entry);
       report.push(`${name}：成功，实付 ¥${price}${coupons.length ? `，券 ${coupons.join("、")}` : "，未用券"}\n${payInfo(r.text)}`);
     }
-    return ok(summary(report, orders.length, orders.length, paid) + (pending.length > 1 ? `\n\n${PAYSHEET_HINT}` : ""));
+    return { placed, entries, report, paid, hitUnpaidCap: false };
+  }
+
+  /**
+   * 把一次执行结果渲染成给用户的文字，并把本批待付款单写进 pending（供 luckin_paysheet）。
+   * total 是整批计划的单数，remainingAfter 是这次之后还没下的单数。
+   */
+  function renderExec(res: ExecResult, total: number, remainingAfter: number) {
+    pending = res.entries;
+    const sum = `合计实付 ¥${res.paid.toFixed(2)}，订单需按官方返回的方式付款。`;
+    let head: string;
+    if (res.hitUnpaidCap && remainingAfter > 0) {
+      head = `已下 ${res.placed} 单（瑞幸未付款单最多 ${MAX_UNPAID} 单）。还剩 ${remainingAfter} 单没下：请先付掉已下的单，再调用 luckin_wait_payment 自动续下剩余的。${sum}`;
+    } else if (res.stoppedReason) {
+      head = `已停止：成功 ${res.placed} 单，第 ${res.placed + 1} 单未完成，剩余 ${remainingAfter - 1} 单未执行。${sum}`;
+    } else {
+      head = `全部 ${total} 单已下单，${sum}`;
+    }
+    const body = [head, ...res.report].join("\n\n");
+    const hint = res.entries.length > (remainingAfter > 0 ? 0 : 1) ? `\n\n${PAYSHEET_HINT}` : "";
+    return res.stoppedReason ? fail(body + hint) : ok(body + hint);
   }
 
   server.registerTool(
@@ -475,9 +523,9 @@ export function createServer(deps: {
         return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "items 槽位不是合法的官方 productList（每项 { productId, skuCode, amount }）" }));
       }
       // 每单 1 杯拆单（spec §5：瑞幸每单只用一张券）。授权上限换算成每单上限。
-      const orders: BatchOrder[] = parsed.data.flatMap((p) =>
-        Array.from({ length: p.amount }, () => ({ productList: [{ ...p, amount: 1 }] })),
-      );
+      const orders: BatchOrder[] = parsed.data
+        .flatMap((p) => Array.from({ length: p.amount }, () => ({ productList: [{ ...p, amount: 1 }] })))
+        .map((o, i) => ({ ...o, label: `第 ${i + 1} 单` }));
       const auth = s.authorization;
       // 每单上限：有总额授权就平摊，否则用一个宽松上限（防止券用完按原价下单仍挡得住明显异常）
       const maxEach = auth.max_total_cents ? auth.max_total_cents / 100 / orders.length : 9999;
@@ -498,7 +546,92 @@ export function createServer(deps: {
         const reason = gate.redeem(confirm_code, "prepare_checkout", plan);
         if (reason) return fail(JSON.stringify({ error: "CONFIRM_INVALID", detail: reason }));
       }
-      return executeBatch(plan);
+      // 先下满当前未付款名额；剩余的记进 job，等付款腾出名额后由 luckin_wait_payment 续下
+      const res = await executeBatch(deptId, longitude, latitude, orders, maxEach, MAX_UNPAID);
+      const placedOrders = orders.slice(0, res.placed);
+      const remaining = orders.slice(res.placed);
+      s.checkout = {
+        deptId,
+        longitude,
+        latitude,
+        maxPayEach: maxEach,
+        placed: res.entries.map((e) => ({ orderId: e.orderId, label: e.label })),
+        remaining: remaining.map((o) => ({ productList: o.productList, label: o.label! })),
+      };
+      return renderExec(res, orders.length, remaining.length);
+    },
+  );
+
+  server.registerTool(
+    "luckin_wait_payment",
+    {
+      description:
+        "分批拆单时，等用户付掉已下的单、腾出未付款名额后，自动续下剩余的单。有界等待：单次最多轮询约 25 秒，期间每隔几秒查一次已下单的付款状态；一旦腾出名额就续下剩余单。返回已下/剩余单数和付款入口。还有剩余时可重复调用。没有进行中的拆单任务时返回提示。",
+      inputSchema: {
+        session_id: z.string(),
+        max_wait_seconds: z.number().int().min(1).max(60).default(25).describe("本次最多等待的秒数，默认 25"),
+      },
+    },
+    async ({ session_id, max_wait_seconds }) => {
+      const miss = await needUpstream();
+      if (miss) return miss;
+      const s = sessions.get(session_id);
+      if (!s) return fail(JSON.stringify({ error: "SESSION_NOT_FOUND", detail: `找不到会话 ${session_id}` }));
+      const job = s.checkout;
+      if (!job) return fail("没有进行中的拆单任务。先用 luckin_prepare_checkout 建单。");
+      if (!job.remaining.length) return ok("所有单都已下完，没有剩余要续下的。请付掉未付款的单。");
+
+      // 查一单付款状态；orderStatus≠10（非待付款）视为已腾出名额
+      const settledCount = async (): Promise<number> => {
+        let settled = 0;
+        for (const p of job.placed) {
+          if (p.settled) {
+            settled++;
+            continue;
+          }
+          try {
+            const r = await upstream!.callTool("queryOrderDetailInfo", { orderId: p.orderId });
+            if (!r.isError) {
+              const st = Number(JSON.parse(r.text).data?.orderStatus);
+              if (Number.isFinite(st) && st !== STATUS_UNPAID) {
+                p.settled = true;
+                settled++;
+              }
+            }
+          } catch {
+            // 查询失败就当这单仍未付款，不冒进续单
+          }
+        }
+        return settled;
+      };
+
+      const deadline = Date.now() + max_wait_seconds * 1000;
+      const pollGap = Math.max(orderGapMs, 3000);
+      // 轮询直到腾出名额或超时
+      let budget = 0;
+      for (;;) {
+        const settled = await settledCount();
+        const unpaid = job.placed.length - settled;
+        budget = MAX_UNPAID - unpaid;
+        if (budget > 0) break;
+        if (Date.now() + pollGap >= deadline) {
+          return ok(
+            `还在等付款：已下 ${job.placed.length} 单都未付款，还剩 ${job.remaining.length} 单没下。付掉已下的单后再调用 luckin_wait_payment 续下。`,
+          );
+        }
+        await sleep(pollGap);
+      }
+
+      // 腾出了 budget 个名额，续下剩余单
+      const toPlace = job.remaining.slice(0, budget).map((o, i) => ({
+        productList: o.productList as z.infer<typeof product>[],
+        label: o.label || `续第 ${i + 1} 单`,
+      }));
+      const res = await executeBatch(job.deptId, job.longitude, job.latitude, toPlace, job.maxPayEach, budget);
+      // 更新 job：把这次下成功的移出 remaining，加进 placed
+      job.placed.push(...res.entries.map((e) => ({ orderId: e.orderId, label: e.label })));
+      job.remaining = job.remaining.slice(res.placed);
+      return renderExec(res, res.placed, job.remaining.length);
     },
   );
 
@@ -566,7 +699,10 @@ export function createServer(deps: {
       }
       const reason = gate.redeem(confirm_code, "batch", plan);
       if (reason) return fail(reason);
-      return executeBatch(plan);
+      // 旧的拆单工具没有续单路径，按原行为连续下所有单；真实命中未付款上限时
+      // executeBatch 仍会安全停下（isTooManyUnpaid 兜底）。名额分批续单走 prepare_checkout。
+      const res = await executeBatch(deptId, longitude, latitude, orders, max_pay_each, orders.length);
+      return renderExec(res, orders.length, orders.length - res.placed);
     },
   );
 

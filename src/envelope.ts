@@ -29,7 +29,14 @@ export function allowedActions(state: State): string[] {
       return ["luckin_resolve_order"];
     case "items_ready":
       // 核价/查店查菜单。quote_best 等后续步骤接入后会出现在这里
-      return ["luckin_resolve_order", "luckin_find_store", "luckin_get_menu", "luckin_quote_best", "luckin_prepare_checkout"];
+      return [
+        "luckin_resolve_order",
+        "luckin_find_store",
+        "luckin_get_menu",
+        "luckin_quote_best",
+        "luckin_prepare_checkout",
+        "luckin_wait_payment",
+      ];
   }
 }
 
