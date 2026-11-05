@@ -9394,8 +9394,8 @@ function anchor(source) {
 }
 var date = /* @__PURE__ */ anchor(dateSource);
 function timeSource(args) {
-  const hhmm = `(?:[01]\\d|2[0-3]):[0-5]\\d`;
-  const regex = typeof args.precision === "number" ? args.precision === -1 ? `${hhmm}` : args.precision === 0 ? `${hhmm}:[0-5]\\d` : `${hhmm}:[0-5]\\d\\.\\d{${args.precision}}` : args.seconds ? `${hhmm}:[0-5]\\d(?:\\.\\d+)?` : `${hhmm}(?::[0-5]\\d(?:\\.\\d+)?)?`;
+  const hhmm2 = `(?:[01]\\d|2[0-3]):[0-5]\\d`;
+  const regex = typeof args.precision === "number" ? args.precision === -1 ? `${hhmm2}` : args.precision === 0 ? `${hhmm2}:[0-5]\\d` : `${hhmm2}:[0-5]\\d\\.\\d{${args.precision}}` : args.seconds ? `${hhmm2}:[0-5]\\d(?:\\.\\d+)?` : `${hhmm2}(?::[0-5]\\d(?:\\.\\d+)?)?`;
   return regex;
 }
 function time(args) {
@@ -39252,18 +39252,24 @@ function payEntryOf(text, label, price, storeName) {
 }
 var esc2 = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var total = (es) => es.reduce((s, e) => s + e.price, 0).toFixed(2);
-var orderedAt = (iso) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+var PAY_WINDOW_MIN = 5;
+var hhmm = (ms) => Number.isNaN(ms) ? "" : new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(ms));
+var payTimes = (iso) => {
+  const at = new Date(iso).getTime();
+  return { orderedAt: hhmm(at), deadline: hhmm(at + PAY_WINDOW_MIN * 6e4) };
 };
+function earliestDeadline(entries) {
+  const first = entries.map((e) => new Date(e.at).getTime()).filter((t) => !Number.isNaN(t)).sort((a, b) => a - b)[0];
+  return first === void 0 ? "" : hhmm(first + PAY_WINDOW_MIN * 6e4);
+}
 function renderHtml(entries) {
   const cards = entries.map((e, i) => {
-    const at = orderedAt(e.at);
+    const { orderedAt: at, deadline } = payTimes(e.at);
     return `<section class="card" id="o${i + 1}">
   <div class="head"><span class="nth">\u7B2C ${i + 1} \u5355</span><span class="price">\xA5${e.price.toFixed(2)}</span></div>
   <div class="label">${esc2(e.label)}</div>
   ${e.qrUrl ? `<img src="${esc2(e.qrUrl)}" width="240" height="240" alt="\u7B2C ${i + 1} \u5355\u4ED8\u6B3E\u4E8C\u7EF4\u7801" referrerpolicy="no-referrer">` : '<p class="muted">\u8FD9\u5355\u6CA1\u6709\u8FD4\u56DE\u4E8C\u7EF4\u7801</p>'}
-  ${at ? `<div class="at">${at} \u4E0B\u5355\uFF0C\u8BF7\u5C3D\u5FEB\u4ED8\u6B3E</div>` : ""}
+  ${at ? `<div class="at">${at} \u4E0B\u5355\uFF0C<b>\u7EA6 ${deadline} \u524D\u4ED8\u6B3E</b>\uFF0C\u8D85\u65F6\u745E\u5E78\u4F1A\u81EA\u52A8\u53D6\u6D88</div>` : ""}
   ${e.deepLink ? `<a class="btn" href="${esc2(e.deepLink)}">\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8</a>` : ""}
   <div class="foot"><span class="muted">\u8BA2\u5355\u53F7 <code>${esc2(e.orderId)}</code></span><label class="done"><input type="checkbox"> \u5DF2\u4ED8</label></div>
 </section>`;
@@ -39296,7 +39302,8 @@ function renderHtml(entries) {
   .price { margin-left:auto; font-weight:800; font-size:22px; }
   .label { width:100%; font-size:13.5px; overflow-wrap:anywhere; }
   img { width:100%; max-width:240px; height:auto; background:#fff; border:1px solid var(--line); border-radius:10px; padding:10px; image-rendering:pixelated; }
-  .at { color:var(--brand); font-weight:600; font-size:14px; }
+  .at { color:var(--brand); font-weight:600; font-size:14px; text-align:center; }
+  .warn { color:#dc2626; }
   .btn { display:block; width:100%; text-align:center; padding:10px; border-radius:8px; background:var(--ok); color:#fff; text-decoration:none; font-weight:600; }
   .foot { display:flex; width:100%; align-items:center; gap:8px; }
   .done { margin-left:auto; color:var(--muted); font-size:13px; white-space:nowrap; }
@@ -39313,13 +39320,13 @@ function renderHtml(entries) {
     <h1>\u5206 ${entries.length} \u5355\u4ED8\u6B3E</h1>
     <div class="sum"><small>\xA5</small>${total(entries)}</div>
   </header>
-  <p class="sub">\u6BCF\u5355\u4E00\u4E2A\u7801\uFF0C\u5404\u81EA\u626B\u4E00\u6B21</p>
+  <p class="sub">\u6BCF\u5355\u4E00\u4E2A\u7801\uFF0C\u5404\u81EA\u626B\u4E00\u6B21${earliestDeadline(entries) ? `\u3002<b class="warn">\u4E0B\u5355\u540E\u7EA6 ${PAY_WINDOW_MIN} \u5206\u949F\u5185\u8981\u4ED8\u5B8C\uFF0C\u6700\u65E9\u4E00\u5355\u7EA6 ${earliestDeadline(entries)} \u622A\u6B62</b>` : ""}</p>
   <main>
 ${cards}
   </main>
   <footer>
     <p>\u7528 <b>\u5FAE\u4FE1</b> \u626B\u7801\u4ED8\u6B3E\uFF1B\u5728\u624B\u673A\u4E0A\u6253\u5F00\u5C31\u70B9"\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8"</p>
-    <p class="muted">\u4ED8\u6B3E\u5373\u786E\u8BA4\uFF0C\u672A\u4ED8\u6B3E\u4F1A\u81EA\u52A8\u53D6\u6D88\u3002\u4ED8\u5B8C\u4E00\u5355\u52FE\u4E0A"\u5DF2\u4ED8"\uFF0C\u65B9\u4FBF\u770B\u8FD8\u5269\u54EA\u51E0\u5355\u3002</p>
+    <p class="muted">\u4ED8\u6B3E\u5373\u786E\u8BA4\uFF0C\u4E0B\u5355\u7EA6 ${PAY_WINDOW_MIN} \u5206\u949F\u5185\u672A\u4ED8\u6B3E\u4F1A\u88AB\u745E\u5E78\u81EA\u52A8\u53D6\u6D88\uFF08\u65F6\u9650\u662F\u5B9E\u6D4B\u4F30\u8BA1\uFF0C\u745E\u5E78\u4E0D\u8FD4\u56DE\u622A\u6B62\u65F6\u95F4\uFF09\u3002\u4ED8\u5B8C\u4E00\u5355\u52FE\u4E0A"\u5DF2\u4ED8"\uFF0C\u65B9\u4FBF\u770B\u8FD8\u5269\u54EA\u51E0\u5355\u3002</p>
   </footer>
 </div>
 </body>
@@ -39333,6 +39340,8 @@ function renderMarkdown(entries) {
       "",
       `\u8BA2\u5355\u53F7 \`${e.orderId}\``,
       "",
+      payTimes(e.at).orderedAt ? `**${payTimes(e.at).orderedAt} \u4E0B\u5355\uFF0C\u7EA6 ${payTimes(e.at).deadline} \u524D\u4ED8\u6B3E**\uFF0C\u8D85\u65F6\u745E\u5E78\u4F1A\u81EA\u52A8\u53D6\u6D88` : "",
+      "",
       e.deepLink ? `- [\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8](${e.deepLink})` : "",
       e.qrUrl ? `- [\u6253\u5F00\u4ED8\u6B3E\u4E8C\u7EF4\u7801](${e.qrUrl})` : ""
     ].filter((l, j, a) => l || a[j - 1]).join("\n")
@@ -39340,7 +39349,7 @@ function renderMarkdown(entries) {
   return [
     `# \u4ED8\u6B3E\u5355\uFF1A${entries.length} \u5355\uFF0C\u5408\u8BA1 \xA5${total(entries)}`,
     "",
-    "\u6BCF\u5355\u8981\u5206\u522B\u4ED8\u6B3E\u3002\u5728\u624B\u673A\u98DE\u4E66\u91CC\u6253\u5F00\uFF0C\u9010\u4E2A\u70B9\u201C\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8\u201D\uFF1B\u70B9\u4E0D\u5F00\u5C31\u70B9\u201C\u6253\u5F00\u4ED8\u6B3E\u4E8C\u7EF4\u7801\u201D\uFF0C\u957F\u6309\u8BC6\u522B\u3002",
+    `\u6BCF\u5355\u8981\u5206\u522B\u4ED8\u6B3E\uFF0C**\u4E0B\u5355\u540E\u7EA6 ${PAY_WINDOW_MIN} \u5206\u949F\u5185\u8981\u4ED8\u5B8C**${earliestDeadline(entries) ? `\uFF08\u6700\u65E9\u4E00\u5355\u7EA6 ${earliestDeadline(entries)} \u622A\u6B62\uFF09` : ""}\uFF0C\u8D85\u65F6\u745E\u5E78\u4F1A\u81EA\u52A8\u53D6\u6D88\u3002\u5728\u624B\u673A\u98DE\u4E66\u91CC\u6253\u5F00\uFF0C\u9010\u4E2A\u70B9\u201C\u5728\u624B\u673A\u4E0A\u76F4\u63A5\u4ED8\u201D\uFF1B\u70B9\u4E0D\u5F00\u5C31\u70B9\u201C\u6253\u5F00\u4ED8\u6B3E\u4E8C\u7EF4\u7801\u201D\uFF0C\u957F\u6309\u8BC6\u522B\u3002`,
     "",
     "\u4ED8\u6B3E\u94FE\u63A5\u8C01\u62FF\u5230\u90FD\u80FD\u66FF\u4F60\u4ED8\u8FD9\u5355\uFF0C\u4E0D\u8981\u5206\u4EAB\u8FD9\u7BC7\u6587\u6863\u3002",
     "",
@@ -39556,6 +39565,7 @@ var INSTRUCTIONS = `\u745E\u5E78\u70B9\u5355\u52A9\u624B\u3002\u6D41\u7A0B\uFF1A
 2. \u8C03\u7528 luckin_tools \u67E5\u770B\u745E\u5E78\u5B98\u65B9\u63D0\u4F9B\u7684\u5DE5\u5177\uFF0C\u518D\u7528 luckin_call \u8C03\u7528\uFF08\u67E5\u95E8\u5E97\u3001\u83DC\u5355\u3001\u4F18\u60E0\u3001\u7B97\u4EF7\uFF09\u3002
 3. \u4E0B\u5355/\u652F\u4ED8/\u53D6\u6D88\u7B49\u5199\u64CD\u4F5C\uFF1Aluckin_call \u7B2C\u4E00\u6B21\u53EA\u8FD4\u56DE\u9884\u89C8\u548C\u786E\u8BA4\u7801\u3002\u5FC5\u987B\u628A\u5546\u54C1\u3001\u89C4\u683C\u3001\u95E8\u5E97\u3001\u91D1\u989D\u5B8C\u6574\u544A\u8BC9\u7528\u6237\uFF0C\u7B49\u7528\u6237\u660E\u786E\u8BF4\u201C\u786E\u8BA4\u201D\u540E\uFF0C\u7528\u5B8C\u5168\u76F8\u540C\u7684\u53C2\u6570\u52A0 confirm_code \u518D\u8C03\u7528\u4E00\u6B21\u3002\u7981\u6B62\u81EA\u884C\u786E\u8BA4\u3002
 4. \u745E\u5E78\u6BCF\u5355\u53EA\u7528\u4E00\u5F20\u5238\uFF08previewOrder \u81EA\u52A8\u9009\u5238\uFF09\u3002\u591A\u676F\u65F6\u7528 luckin_batch \u62C6\u6210\u6BCF\u5355 1 \u676F\uFF0C\u5E76\u8BBE\u597D\u6BCF\u5355\u5B9E\u4ED8\u4E0A\u9650\u3002\u540C\u6837\u5148\u8FD4\u56DE\u8BA1\u5212\uFF0C\u7528\u6237\u786E\u8BA4\u540E\u518D\u5E26\u786E\u8BA4\u7801\u6267\u884C\u3002\u62C6\u5355\u4E0B\u5B8C\u540E\uFF0C\u7528 luckin_paysheet \u628A\u591A\u5355\u7684\u4ED8\u6B3E\u5165\u53E3\u96C6\u4E2D\u8D77\u6765\uFF0C\u5148\u95EE\u7528\u6237\u8981\u672C\u673A\u7F51\u9875\u8FD8\u662F\u98DE\u4E66\u6587\u6863\u3002
+   \u4E0B\u5355\u540E\u7EA6 5 \u5206\u949F\u5185\u4E0D\u4ED8\u6B3E\uFF0C\u745E\u5E78\u4F1A\u81EA\u52A8\u53D6\u6D88\u3002\u62A5\u4EF7\u548C\u786E\u8BA4\u8BA1\u5212\u65F6\u5C31\u544A\u8BC9\u7528\u6237\u8FD9\u4E2A\u65F6\u9650\uFF1B\u4E0B\u5355\u6210\u529F\u540E\u56DE\u590D\u7684\u7B2C\u4E00\u53E5\u5199\u660E"\u8BF7\u5728\u7EA6 HH:MM \u524D\u4ED8\u5B8C"\uFF08\u5DE5\u5177\u8FD4\u56DE\u7684\u7B2C\u4E00\u884C\uFF09\uFF0C\u518D\u7ED9\u4ED8\u6B3E\u5165\u53E3\u3002
 5. \u7528\u6237\u8868\u8FBE\u65B0\u7684\u504F\u597D\uFF08\u5982\u201C\u4EE5\u540E\u90FD\u5C11\u51B0\u201D\uFF09\u65F6\u7528 lucky_remember \u8BB0\u4E0B\u6765\u3002
 6. \u7528\u6237\u95EE\u201C\u9644\u8FD1\u201D\u201C\u79BB\u6211\u6700\u8FD1\u201D\u65F6\uFF0C\u4E0D\u77E5\u9053\u7528\u6237\u5728\u54EA\u5C31\u5148\u95EE\uFF1B\u7528\u6237\u8BF4\u51FA\u5730\u6807\u540E\u7528 locate \u6362\u6210\u7ECF\u7EAC\u5EA6\uFF0C\u518D\u67E5\u95E8\u5E97\u3002\u4E0D\u8981\u628A\u5E38\u7528\u95E8\u5E97\u5F53\u6210\u7528\u6237\u7684\u4F4D\u7F6E\u3002`;
 function createServer(deps) {
@@ -39719,7 +39729,14 @@ function createServer(deps) {
             d.orders.push({ at: (/* @__PURE__ */ new Date()).toISOString(), tool, args, result: r.text.slice(0, 2e3) });
           });
         }
-        return r.isError ? fail(r.text) : ok(r.text);
+        if (r.isError) return fail(r.text);
+        const entry = tool === "createOrder" ? payEntryOf(r.text, "", 0) : null;
+        const deadline = entry ? earliestDeadline([entry]) : "";
+        return ok(
+          deadline ? `\u26A0 \u8BF7\u5728\u7EA6 ${deadline} \u524D\u4ED8\u6B3E\uFF08\u4E0B\u5355\u540E\u7EA6 ${PAY_WINDOW_MIN} \u5206\u949F\u5185\u4E0D\u4ED8\uFF0C\u745E\u5E78\u4F1A\u81EA\u52A8\u53D6\u6D88\uFF1B\u65F6\u9650\u662F\u5B9E\u6D4B\u4F30\u8BA1\uFF09\u3002
+
+${r.text}` : r.text
+        );
       } catch (e) {
         return fail(e.message);
       }
@@ -39892,7 +39909,9 @@ ${payInfo(r.text)}`);
     } else {
       head = `\u5168\u90E8 ${total2} \u5355\u5DF2\u4E0B\u5355\uFF0C${sum}`;
     }
-    const body = [head, ...res.report].join("\n\n");
+    const deadline = earliestDeadline(res.entries);
+    const urgent = deadline ? `\u26A0 \u8BF7\u5728\u7EA6 ${deadline} \u524D\u4ED8\u5B8C\uFF08\u4E0B\u5355\u540E\u7EA6 ${PAY_WINDOW_MIN} \u5206\u949F\u5185\u4E0D\u4ED8\uFF0C\u745E\u5E78\u4F1A\u81EA\u52A8\u53D6\u6D88\uFF1B\u65F6\u9650\u662F\u5B9E\u6D4B\u4F30\u8BA1\uFF09\u3002` : "";
+    const body = [urgent, head, ...res.report].filter(Boolean).join("\n\n");
     const hint = res.entries.length > (remainingAfter > 0 ? 0 : 1) ? `
 
 ${PAYSHEET_HINT}` : "";
@@ -40080,6 +40099,7 @@ ${PAYSHEET_HINT}` : "";
             `\u3010\u5F85\u786E\u8BA4\u3011\u5C06\u5728\u95E8\u5E97 ${deptId} \u4F9D\u6B21\u4E0B ${orders.length} \u5355\uFF0C\u6BCF\u5355\u5B9E\u4ED8\u4E0D\u8D85\u8FC7 \xA5${max_pay_each}\uFF0C\u5C1A\u672A\u6267\u884C\uFF1A`,
             ...lines,
             "\u9884\u89C8\u65F6\u5238\u4E0D\u4F1A\u88AB\u5360\u7528\uFF0C\u6240\u4EE5\u4E8B\u5148\u7B97\u51FA\u7684\u4EF7\u683C\u53EA\u662F\u4F30\u8BA1\uFF1A\u540E\u9762\u51E0\u5355\u80FD\u4E0D\u80FD\u7528\u4E0A\u5238\uFF0C\u8981\u7B49\u524D\u9762\u51E0\u5355\u4E0B\u5B8C\u624D\u77E5\u9053\u3002",
+            `\u6BCF\u5355\u4E0B\u5355\u540E\u7EA6 ${PAY_WINDOW_MIN} \u5206\u949F\u5185\u8981\u4ED8\u6B3E\uFF0C\u8D85\u65F6\u745E\u5E78\u4F1A\u81EA\u52A8\u53D6\u6D88\uFF08\u5B9E\u6D4B\u4F30\u8BA1\uFF09\u3002\u786E\u8BA4\u524D\u544A\u8BC9\u7528\u6237\u8FD9\u4E2A\u65F6\u9650\uFF0C\u8BA9\u7528\u6237\u51C6\u5907\u597D\u5FAE\u4FE1\u518D\u786E\u8BA4\u3002`,
             `\u8BF7\u628A\u8BA1\u5212\u3001\u6BCF\u5355\u4E0A\u9650\u548C\u6700\u591A\u82B1\u8D39 \xA5${(max_pay_each * orders.length).toFixed(2)} \u544A\u8BC9\u7528\u6237\u3002\u7528\u6237\u660E\u786E\u786E\u8BA4\u540E\uFF0C\u7528\u76F8\u540C\u53C2\u6570\u5E76\u5E26 confirm_code="${code}" \u518D\u8C03\u7528\u3002`,
             `\u786E\u8BA4\u7801 ${Math.round(config3.confirmTtlMs / 6e4)} \u5206\u949F\u5185\u6709\u6548\uFF0C\u4EC5\u53EF\u4F7F\u7528\u4E00\u6B21\u3002`
           ].join("\n")
