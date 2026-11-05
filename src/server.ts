@@ -11,7 +11,7 @@ import { pathToFileURL } from "node:url";
 import { searchPlace, type Fetch } from "./amap.js";
 import { SessionStore, type Slot } from "./session.js";
 import { envelope } from "./envelope.js";
-import { parseStores, parseProducts, parseQuote, isOpen } from "./luckin.js";
+import { parseStores, parseProducts, parseQuote, isOpen, comparePlans } from "./luckin.js";
 
 const AMAP_KEY_PAGE = "https://console.amap.com/dev/key/app";
 
@@ -363,12 +363,35 @@ export function createServer(deps: {
       if (!parsed.success) {
         return fail(JSON.stringify({ error: "CONSTRAINT_UNSAT", detail: "items 槽位不是合法的官方 productList（每项 { productId, skuCode, amount }）" }));
       }
+      // 展开成每杯一项（拆单方案每单 1 杯）
+      const cups = parsed.data.flatMap((p) => Array.from({ length: p.amount }, () => ({ ...p, amount: 1 })));
       try {
+        // 合单：一次 previewOrder 传全部商品，实付准确
         const r = await upstream!.callTool("previewOrder", { deptId, productList: parsed.data });
         if (r.isError) return fail(r.text);
-        const quote = parseQuote(r.text);
-        // 透传核价结果；拆单比价留到后续步骤
-        return json({ ...envelope(s, { reply_must_show_user: ["quote"] }), quote });
+        const combined = parseQuote(r.text);
+
+        // 只有一杯时没有拆单可言，直接返回单方案
+        if (cups.length === 1) {
+          return json({ ...envelope(s, { reply_must_show_user: ["quote"] }), quote: combined });
+        }
+
+        // 拆单：每杯单独 previewOrder，求和是乐观下界（预览不占券）
+        const splitPays: number[] = [];
+        for (const cup of cups) {
+          const pr = await upstream!.callTool("previewOrder", { deptId, productList: [cup] });
+          if (pr.isError) return fail(pr.text);
+          splitPays.push(parseQuote(pr.text).payPrice);
+        }
+        const cmp = comparePlans(combined.payPrice, splitPays, combined.initialPrice);
+        return json({
+          ...envelope(s, { reply_must_show_user: ["comparison"] }),
+          comparison: {
+            ...cmp,
+            coupon_note: "拆单实付是预览估计（预览不占券），真实总价要到下单才确定，可能更高",
+            baseline_note: "基线是原价合计，省=原价−实付",
+          },
+        });
       } catch (e) {
         return fail((e as Error).message);
       }

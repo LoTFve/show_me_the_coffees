@@ -202,6 +202,26 @@ describe("session contract (spec §5)", () => {
     expect(d.quote).toMatchObject({ payPrice: 9.9, initialPrice: 15, deptId: 606675 });
   });
 
+  it("quote_best returns a split-vs-combined comparison for multiple cups", async () => {
+    await start();
+    await resolve({
+      session_id: "s1",
+      slots: {
+        fulfillment: slot("自取"),
+        store: slot({ deptId: 606675, longitude: 117.131554, latitude: 31.818673 }),
+        items: slot([{ productId: 4805, skuCode: "SP3225-00147", amount: 2 }]),
+      },
+    });
+    const r = await client.callTool({ name: "luckin_quote_best", arguments: { session_id: "s1" } });
+    const d = JSON.parse(text(r));
+    expect(d.reply_must_show_user).toContain("comparison");
+    expect(d.comparison.plans).toHaveLength(2);
+    const split = d.comparison.plans.find((p: any) => p.kind === "split");
+    expect(split.orderCount).toBe(2);
+    expect(split.estimated).toBe(true);
+    expect(d.comparison.coupon_note).toMatch(/估计|不占券/);
+  });
+
   it("quote_best refuses before items_ready with CONSTRAINT_UNSAT", async () => {
     await start();
     await resolve({ session_id: "s1", slots: { fulfillment: slot("自取") } });
