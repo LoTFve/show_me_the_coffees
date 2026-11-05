@@ -4,7 +4,7 @@ import { TOKEN_PAGE, type Config } from "./config.js";
 import { ConfirmGate, isWriteTool } from "./guard.js";
 import { readToken, saveToken, type LocalStore } from "./store.js";
 import { isAuthError, type Upstream } from "./upstream.js";
-import { payEntryOf, renderHtml, renderMarkdown, type PayEntry } from "./paysheet.js";
+import { PAY_WINDOW_MIN, earliestDeadline, payEntryOf, renderHtml, renderMarkdown, type PayEntry } from "./paysheet.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -54,6 +54,7 @@ const INSTRUCTIONS = `瑞幸点单助手。流程：
 2. 调用 luckin_tools 查看瑞幸官方提供的工具，再用 luckin_call 调用（查门店、菜单、优惠、算价）。
 3. 下单/支付/取消等写操作：luckin_call 第一次只返回预览和确认码。必须把商品、规格、门店、金额完整告诉用户，等用户明确说“确认”后，用完全相同的参数加 confirm_code 再调用一次。禁止自行确认。
 4. 瑞幸每单只用一张券（previewOrder 自动选券）。多杯时用 luckin_batch 拆成每单 1 杯，并设好每单实付上限。同样先返回计划，用户确认后再带确认码执行。拆单下完后，用 luckin_paysheet 把多单的付款入口集中起来，先问用户要本机网页还是飞书文档。
+   下单后约 5 分钟内不付款，瑞幸会自动取消。报价和确认计划时就告诉用户这个时限；下单成功后回复的第一句写明"请在约 HH:MM 前付完"（工具返回的第一行），再给付款入口。
 5. 用户表达新的偏好（如“以后都少冰”）时用 lucky_remember 记下来。
 6. 用户问“附近”“离我最近”时，不知道用户在哪就先问；用户说出地标后用 locate 换成经纬度，再查门店。不要把常用门店当成用户的位置。`;
 
@@ -257,7 +258,15 @@ export function createServer(deps: {
             d.orders.push({ at: new Date().toISOString(), tool, args, result: r.text.slice(0, 2000) });
           });
         }
-        return r.isError ? fail(r.text) : ok(r.text);
+        if (r.isError) return fail(r.text);
+        // 单独 createOrder 成功也要把付款时限放在最前面
+        const entry = tool === "createOrder" ? payEntryOf(r.text, "", 0) : null;
+        const deadline = entry ? earliestDeadline([entry]) : "";
+        return ok(
+          deadline
+            ? `⚠ 请在约 ${deadline} 前付款（下单后约 ${PAY_WINDOW_MIN} 分钟内不付，瑞幸会自动取消；时限是实测估计）。\n\n${r.text}`
+            : r.text,
+        );
       } catch (e) {
         return fail((e as Error).message);
       }
@@ -483,7 +492,12 @@ export function createServer(deps: {
     } else {
       head = `全部 ${total} 单已下单，${sum}`;
     }
-    const body = [head, ...res.report].join("\n\n");
+    // 付款时限放在第一行：用户最容易错过的就是这个
+    const deadline = earliestDeadline(res.entries);
+    const urgent = deadline
+      ? `⚠ 请在约 ${deadline} 前付完（下单后约 ${PAY_WINDOW_MIN} 分钟内不付，瑞幸会自动取消；时限是实测估计）。`
+      : "";
+    const body = [urgent, head, ...res.report].filter(Boolean).join("\n\n");
     const hint = res.entries.length > (remainingAfter > 0 ? 0 : 1) ? `\n\n${PAYSHEET_HINT}` : "";
     return res.stoppedReason ? fail(body + hint) : ok(body + hint);
   }
@@ -692,6 +706,7 @@ export function createServer(deps: {
             `【待确认】将在门店 ${deptId} 依次下 ${orders.length} 单，每单实付不超过 ¥${max_pay_each}，尚未执行：`,
             ...lines,
             "预览时券不会被占用，所以事先算出的价格只是估计：后面几单能不能用上券，要等前面几单下完才知道。",
+            `每单下单后约 ${PAY_WINDOW_MIN} 分钟内要付款，超时瑞幸会自动取消（实测估计）。确认前告诉用户这个时限，让用户准备好微信再确认。`,
             `请把计划、每单上限和最多花费 ¥${(max_pay_each * orders.length).toFixed(2)} 告诉用户。用户明确确认后，用相同参数并带 confirm_code="${code}" 再调用。`,
             `确认码 ${Math.round(config.confirmTtlMs / 60000)} 分钟内有效，仅可使用一次。`,
           ].join("\n"),

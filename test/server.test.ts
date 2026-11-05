@@ -118,7 +118,10 @@ describe("lucky-agent", () => {
     expect(up.calls).toHaveLength(0);
 
     const done = await client.callTool({ name: "luckin_call", arguments: { ...args, confirm_code: code } });
-    expect(JSON.parse(text(done)).data.orderIdStr).toBe("77011");
+    // 第一行是付款时限，其后原样是瑞幸的返回
+    const [warn, , raw] = text(done).split("\n");
+    expect(warn).toMatch(/^⚠ 请在约 \d\d:\d\d 前付款（下单后约 5 分钟内不付，瑞幸会自动取消/);
+    expect(JSON.parse(raw).data.orderIdStr).toBe("77011");
     expect(up.calls).toHaveLength(1);
 
     // 一次性
@@ -159,11 +162,14 @@ describe("lucky-agent", () => {
     const b = batch(10);
     const preview = await client.callTool({ name: "luckin_batch", arguments: b });
     expect(text(preview)).toContain("依次下 10 单");
+    expect(text(preview)).toContain("每单下单后约 5 分钟内要付款");
     expect(up.calls).toHaveLength(0);
 
     const r = await client.callTool({ name: "luckin_batch", arguments: { ...b, confirm_code: codeOf(preview) } });
     expect(r.isError).toBeFalsy();
     expect(text(r)).toContain("全部 10 单已下单，合计实付 ¥109.00");
+    // 付款时限是第一行
+    expect(text(r).split("\n")[0]).toMatch(/^⚠ 请在约 \d\d:\d\d 前付完（下单后约 5 分钟内不付，瑞幸会自动取消/);
     expect(up.creates_().map(([, a]) => (a.couponCodeList as string[])[0])).toEqual(Array.from({ length: 10 }, (_, i) => `SY${i}`));
 
     const p = JSON.parse(text(await client.callTool({ name: "lucky_profile", arguments: { recent_orders: 50 } })));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { payEntryOf, renderHtml, renderMarkdown } from "../src/paysheet.js";
+import { earliestDeadline, payEntryOf, renderHtml, renderMarkdown } from "../src/paysheet.js";
 
 const order = (n: number, extra: Record<string, unknown> = {}) =>
   JSON.stringify({
@@ -58,22 +58,32 @@ describe("renderHtml", () => {
     expect(html).not.toMatch(/<script/i);
   });
 
-  it("follows the design: split-order header, per-order card, WeChat, no made-up countdown", () => {
+  it("follows the design: split-order header, per-order card, WeChat, no live countdown", () => {
     const html = renderHtml(entries);
     expect(html).toContain("分 3 单付款");
     expect(html).toContain("每单一个码，各自扫一次");
     expect(html).toContain("第 3 单");
-    expect(html).toContain("付款即确认，未付款会自动取消");
+    expect(html).toContain("付款即确认，下单约 5 分钟内未付款会被瑞幸自动取消");
     // 码是微信付款码：只提微信，不提支付宝或瑞幸 App
     expect(html).toContain("用 <b>微信</b> 扫码付款");
     expect(html).not.toMatch(/支付宝|瑞幸 App/);
-    // 瑞幸不返回付款截止时间，不显示“剩 mm:ss”这类倒计时
+    // 截止时间是估计值：只写“约 HH:MM 前”，不显示会走动的“剩 mm:ss”
     expect(html).not.toMatch(/剩\s*\d/);
   });
 
-  it("shows the order time in Beijing time", () => {
+  it("shows order time and the estimated 5-minute pay deadline in Beijing time", () => {
     const e = { ...entries[0], at: "2026-11-02T09:56:30.000Z" };
-    expect(renderHtml([e])).toContain("17:56 下单，请尽快付款");
+    const html = renderHtml([e]);
+    expect(html).toContain("17:56 下单，<b>约 18:01 前付款</b>，超时瑞幸会自动取消");
+    expect(html).toContain("下单后约 5 分钟内要付完，最早一单约 18:01 截止");
+  });
+
+  it("warns with the earliest deadline when orders were placed at different times", () => {
+    const es = [
+      { ...entries[0], at: "2026-11-03T07:16:00.000Z" },
+      { ...entries[1], at: "2026-11-03T07:14:00.000Z" },
+    ];
+    expect(renderHtml(es)).toContain("最早一单约 15:19 截止");
   });
 
   it("escapes labels", () => {
@@ -91,5 +101,19 @@ describe("renderMarkdown", () => {
     expect(md).toContain("[在手机上直接付](weixin://wxpay/bizpayurl?pr=p1)");
     expect(md).toContain("[打开付款二维码](https://open.lkcoffee.com/transfer/qrcode?token=t2)");
     expect(md).toContain("不要分享这篇文档");
+  });
+
+  it("states the pay deadline at the top and on each order", () => {
+    const es = [1, 2].map((n) => ({ ...payEntryOf(order(n), `第 ${n} 杯`, 9.9)!, at: "2026-11-03T07:14:00.000Z" }));
+    const md = renderMarkdown(es);
+    expect(md).toContain("**下单后约 5 分钟内要付完**（最早一单约 15:19 截止）");
+    expect(md).toContain("**15:14 下单，约 15:19 前付款**");
+  });
+});
+
+describe("earliestDeadline", () => {
+  it("is empty when no order has a valid time", () => {
+    expect(earliestDeadline([])).toBe("");
+    expect(earliestDeadline([{ ...payEntryOf(order(1), "x", 9.9)!, at: "bad" }])).toBe("");
   });
 });
